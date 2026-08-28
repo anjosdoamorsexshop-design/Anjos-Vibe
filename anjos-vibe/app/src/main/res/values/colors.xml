@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_roxo">#7D387D</color>
+    <color name="brand_rosa">#F686BD</color>
+    <color name="brand_magenta">#E12B8D</color>
+    <color name="brand_fundo">#170A14</color>
+    <color name="ic_launcher_background">#7D387D</color>
+</resources>

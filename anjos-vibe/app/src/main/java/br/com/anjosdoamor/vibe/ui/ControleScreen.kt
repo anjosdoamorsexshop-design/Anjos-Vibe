@@ -1,98 +1,92 @@
 package br.com.anjosdoamor.vibe.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.Canvas
 import br.com.anjosdoamor.vibe.Mode
 import br.com.anjosdoamor.vibe.VibeController
 import br.com.anjosdoamor.vibe.VibeState
-import kotlin.math.roundToInt
+import br.com.anjosdoamor.vibe.ble.Protocol
 
 /**
- * Tela de controle. O dial circular e o elemento central: arrastar para
- * cima aumenta, para baixo diminui. O anel pulsa junto com a vibracao.
+ * Tela principal: os 9 modos do aparelho, em grade.
+ *
+ * O aparelho tem 9 modos de fabrica -- nao tem controle continuo de
+ * intensidade. Entao a tela mostra o que ele realmente faz, em vez de
+ * fingir um dial que nao corresponde ao hardware.
  */
 @Composable
 fun ControleScreen(state: VibeState) {
-
-    val animated by animateFloatAsState(
-        targetValue = state.intensity,
-        label = "intensidade"
-    )
+    val context = LocalContext.current
+    var renomeando by remember { mutableStateOf<Int?>(null) }
+    var refresh by remember { mutableIntStateOf(0) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
     ) {
-
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(12.dp))
 
         Text(
             text = when (state.mode) {
-                Mode.MANUAL -> "CONTROLE"
-                Mode.PADRAO -> "PADRAO: ${state.patternId?.uppercase() ?: ""}"
+                Mode.DIRETO -> Protocol.modoNome(context, state.directMode).uppercase()
+                Mode.PADRAO -> "PADRAO"
                 Mode.MUSICA -> "MUSICA"
+                Mode.MANUAL -> "PARADO"
             },
             style = MaterialTheme.typography.labelSmall,
-            color = Brand.TextoFraco
+            color = if (state.running) Brand.Rosa else Brand.TextoFraco
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(4.dp))
 
-        IntensityDial(
-            intensity = animated,
-            level = state.currentLevel,
-            onChange = { VibeController.setManualIntensity(it) }
-        )
+        PulseBar(ativo = state.running, intensidade = state.intensity)
 
-        Spacer(Modifier.height(28.dp))
+        Spacer(Modifier.height(20.dp))
 
-        // Botoes de nivel direto
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            listOf(1, 2, 3).forEach { level ->
-                val active = state.currentLevel == level
-                Button(
-                    onClick = { VibeController.setLevel(level) },
+        // Grade dos 9 modos
+        key(refresh) {
+            for (linha in 0 until 3) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier
-                        .weight(1f)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (active) Brand.Magenta else Brand.Superficie,
-                        contentColor = if (active) Color.White else Brand.TextoFraco
-                    )
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp)
                 ) {
-                    Text("$level", fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+                    for (col in 0 until 3) {
+                        val modo = linha * 3 + col + 1
+                        val ativo = state.mode == Mode.DIRETO && state.directMode == modo
+                        ModoButton(
+                            numero = modo,
+                            nome = Protocol.modoNome(context, modo),
+                            ativo = ativo,
+                            modifier = Modifier.weight(1f),
+                            onClick = { VibeController.setMode(modo) },
+                            onLongClick = { renomeando = modo }
+                        )
+                    }
                 }
             }
         }
 
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(4.dp))
 
-        // Parada. Sempre visivel, sempre funciona.
         Button(
             onClick = { VibeController.stop() },
             modifier = Modifier
@@ -107,25 +101,13 @@ fun ControleScreen(state: VibeState) {
             Text("PARAR", fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
         }
 
-        Spacer(Modifier.height(20.dp))
+        Spacer(Modifier.height(14.dp))
 
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Modo suave", color = Brand.Texto, fontSize = 15.sp)
-                Text(
-                    "Simula intensidades intermediarias. Desligue se ficar tremido.",
-                    color = Brand.TextoFraco,
-                    fontSize = 12.sp
-                )
-            }
-            Switch(
-                checked = state.smoothMode,
-                onCheckedChange = { VibeController.setSmoothMode(it) }
-            )
-        }
+        Text(
+            "Segure um modo para dar um nome a ele.",
+            color = Brand.TextoFraco.copy(alpha = 0.7f),
+            fontSize = 12.sp
+        )
 
         state.error?.let { msg ->
             Spacer(Modifier.height(16.dp))
@@ -134,103 +116,140 @@ fun ControleScreen(state: VibeState) {
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
+                Text(msg, color = Brand.Perigo, fontSize = 13.sp, modifier = Modifier.padding(12.dp))
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+    }
+
+    renomeando?.let { modo ->
+        var nome by remember(modo) { mutableStateOf(Protocol.modoNome(context, modo)) }
+        AlertDialog(
+            onDismissRequest = { renomeando = null },
+            title = { Text("Nome do modo $modo") },
+            text = {
+                OutlinedTextField(
+                    value = nome,
+                    onValueChange = { nome = it },
+                    singleLine = true,
+                    placeholder = { Text("ex: onda forte, pulsando...") }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    Protocol.setModoNome(context, modo, nome)
+                    renomeando = null
+                    refresh++
+                }) { Text("Salvar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { renomeando = null }) { Text("Cancelar") }
+            },
+            containerColor = Brand.Superficie
+        )
+    }
+}
+
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+private fun ModoButton(
+    numero: Int,
+    nome: String,
+    ativo: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = if (ativo) Brand.Magenta else Brand.Superficie,
+        modifier = modifier
+            .height(76.dp)
+            .then(
+                Modifier.combinedClickableCompat(onClick = onClick, onLongClick = onLongClick)
+            )
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxSize().padding(6.dp)
+        ) {
+            Text(
+                "$numero",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (ativo) Color.White else Brand.Texto
+            )
+            if (nome != "Modo $numero") {
                 Text(
-                    msg,
-                    color = Brand.Perigo,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(12.dp)
+                    nome,
+                    fontSize = 10.sp,
+                    maxLines = 2,
+                    color = if (ativo) Color.White.copy(alpha = 0.85f) else Brand.TextoFraco
                 )
             }
         }
     }
 }
 
-/**
- * Dial circular. O anel externo mostra a intensidade; o nucleo pulsa
- * com o nivel que esta realmente no ar.
- */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+private fun Modifier.combinedClickableCompat(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
+): Modifier = this.then(
+    androidx.compose.foundation.combinedClickable(
+        onClick = onClick,
+        onLongClick = onLongClick
+    )
+)
+
+/** Barra que pulsa enquanto ha sessao ativa. */
 @Composable
-private fun IntensityDial(
-    intensity: Float,
-    level: Int,
-    onChange: (Float) -> Unit
-) {
-    var dragValue by remember { mutableFloatStateOf(intensity) }
-
-    LaunchedEffect(intensity) {
-        dragValue = intensity
-    }
-
-    Box(
-        contentAlignment = Alignment.Center,
+private fun PulseBar(ativo: Boolean, intensidade: Float) {
+    val transition = rememberInfiniteTransitionSafe(ativo)
+    Canvas(
         modifier = Modifier
-            .size(260.dp)
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    // Arrastar para cima aumenta
-                    val delta = -dragAmount.y / 320f
-                    dragValue = (dragValue + delta).coerceIn(0f, 1f)
-                    onChange(dragValue)
-                }
-            }
+            .fillMaxWidth()
+            .height(56.dp)
     ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = 18.dp.toPx()
-            val radius = (size.minDimension - stroke) / 2f
-
-            // Trilho
-            drawCircle(
-                color = Brand.Superficie,
-                radius = radius,
-                style = Stroke(width = stroke)
-            )
-
-            // Arco de intensidade
-            if (intensity > 0f) {
-                drawArc(
-                    brush = Brush.sweepGradient(
-                        listOf(Brand.Roxo, Brand.Magenta, Brand.Rosa, Brand.Roxo)
-                    ),
-                    startAngle = 135f,
-                    sweepAngle = 270f * intensity,
-                    useCenter = false,
-                    style = Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round),
-                    topLeft = Offset(
-                        (size.width - radius * 2) / 2,
-                        (size.height - radius * 2) / 2
-                    ),
-                    size = androidx.compose.ui.geometry.Size(radius * 2, radius * 2)
+        val bars = 32
+        val gap = 5f
+        val w = (size.width - gap * (bars - 1)) / bars
+        for (i in 0 until bars) {
+            val phase = i.toFloat() / bars
+            val h = if (!ativo) 4f else {
+                val wave = kotlin.math.abs(
+                    kotlin.math.sin(phase * 9f + transition * 6.28f)
                 )
+                (size.height * (0.15f + 0.85f * wave * intensidade.coerceAtLeast(0.35f)))
+                    .coerceAtLeast(4f)
             }
-
-            // Nucleo que respira com o nivel no ar
-            if (level > 0) {
-                drawCircle(
-                    color = Brand.Magenta.copy(alpha = 0.06f + level * 0.05f),
-                    radius = radius * (0.45f + level * 0.09f)
-                )
-            }
-        }
-
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(
-                "${(intensity * 100).roundToInt()}",
-                style = MaterialTheme.typography.displayLarge,
-                color = Brand.Texto
-            )
-            Text(
-                if (level > 0) "nivel $level" else "parado",
-                color = Brand.TextoFraco,
-                fontSize = 13.sp
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                "arraste para cima",
-                color = Brand.TextoFraco.copy(alpha = 0.5f),
-                fontSize = 11.sp,
-                textAlign = TextAlign.Center
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    if (ativo) listOf(Brand.Rosa, Brand.Magenta)
+                    else listOf(Brand.TextoFraco.copy(alpha = 0.2f), Brand.TextoFraco.copy(alpha = 0.2f))
+                ),
+                topLeft = androidx.compose.ui.geometry.Offset(i * (w + gap), (size.height - h) / 2),
+                size = androidx.compose.ui.geometry.Size(w, h),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(w / 2)
             )
         }
     }
+}
+
+@Composable
+private fun rememberInfiniteTransitionSafe(ativo: Boolean): Float {
+    if (!ativo) return 0f
+    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulso")
+    val v by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+            animation = androidx.compose.animation.core.tween(1800),
+            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        ),
+        label = "fase"
+    )
+    return v
 }

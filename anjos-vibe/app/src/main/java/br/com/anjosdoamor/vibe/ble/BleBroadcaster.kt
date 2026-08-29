@@ -17,9 +17,11 @@ import androidx.core.content.ContextCompat
 /**
  * Emite os pacotes de advertising que o vibrador escuta.
  *
+ * Trabalha com MODOS (1..9), nao com velocidades. O aparelho tem 9 modos
+ * de fabrica e o modo 0 significa parar.
+ *
  * O aparelho nao responde nem confirma nada -- e mao unica. Por isso o
- * comando de parar e reenviado algumas vezes, para o caso de um pacote
- * se perder no ar.
+ * comando de parar e reenviado algumas vezes.
  */
 class BleBroadcaster(private val context: Context) {
 
@@ -32,8 +34,8 @@ class BleBroadcaster(private val context: Context) {
     private var advertiser: BluetoothLeAdvertiser? = null
     private var currentCallback: AdvertiseCallback? = null
 
-    /** Nivel 0..3 que esta no ar agora. -1 = nada sendo transmitido. */
-    var currentLevel: Int = -1
+    /** Modo 0..9 que esta no ar agora. -1 = nada sendo transmitido. */
+    var currentMode: Int = -1
         private set
 
     var lastError: String? = null
@@ -68,21 +70,17 @@ class BleBroadcaster(private val context: Context) {
         return advertiser
     }
 
-    /**
-     * Coloca no ar o comando do nivel informado (0 = parar, 1..3 = velocidade).
-     * Nao faz nada se o nivel ja for o que esta transmitindo.
-     */
-    @SuppressLint("MissingPermission")
-    fun setLevel(level: Int) {
-        val target = level.coerceIn(0, 3)
-        if (target == currentLevel) return
-        forceLevel(target)
+    /** Coloca no ar o modo informado. Nao faz nada se ja for o modo atual. */
+    fun setMode(mode: Int) {
+        val target = mode.coerceIn(0, Protocol.TOTAL_MODOS)
+        if (target == currentMode) return
+        forceMode(target)
     }
 
-    /** Reenvia o comando mesmo que ja seja o nivel atual. */
+    /** Reenvia o comando mesmo que ja seja o modo atual. */
     @SuppressLint("MissingPermission")
-    fun forceLevel(level: Int) {
-        val target = level.coerceIn(0, 3)
+    fun forceMode(mode: Int) {
+        val target = mode.coerceIn(0, Protocol.TOTAL_MODOS)
         val adv = advertiser()
         if (adv == null) {
             lastError = "Este aparelho nao consegue transmitir Bluetooth."
@@ -132,25 +130,21 @@ class BleBroadcaster(private val context: Context) {
                     else -> "Falha ao transmitir (codigo $errorCode)."
                 }
                 Log.w(TAG, lastError ?: "")
-                currentLevel = -1
+                currentMode = -1
             }
         }
 
         try {
             adv.startAdvertising(settings, data, callback)
             currentCallback = callback
-            currentLevel = target
+            currentMode = target
         } catch (e: Exception) {
             lastError = e.message
-            currentLevel = -1
+            currentMode = -1
         }
     }
 
-    /** Para tudo. Reenvia o comando de parada algumas vezes por seguranca. */
-    @SuppressLint("MissingPermission")
-    fun stopAll() {
-        forceLevel(0)
-    }
+    fun stopAll() = forceMode(0)
 
     @SuppressLint("MissingPermission")
     private fun stopInternal() {
@@ -163,10 +157,9 @@ class BleBroadcaster(private val context: Context) {
         currentCallback = null
     }
 
-    /** Desliga o radio por completo. Use so ao encerrar o app. */
     @SuppressLint("MissingPermission")
     fun shutdown() {
         stopInternal()
-        currentLevel = -1
+        currentMode = -1
     }
 }

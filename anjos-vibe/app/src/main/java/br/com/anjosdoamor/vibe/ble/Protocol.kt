@@ -4,43 +4,57 @@ import android.content.Context
 import android.os.ParcelUuid
 
 /**
- * Protocolo de broadcast dos vibradores tipo Love Spouse.
+ * Protocolo dos vibradores da Anjos do Amor.
  *
- * O aparelho nao pareia. Ele fica escutando pacotes de advertising BLE e
- * reage ao conteudo do campo Manufacturer Data. Qualquer app que emita o
- * pacote correto controla o aparelho.
+ * O aparelho nao pareia: fica escutando pacotes de advertising BLE e reage
+ * ao Manufacturer Data. Qualquer app que emita o pacote certo controla ele.
  *
- * Valores confirmados por captura no estoque da Anjos do Amor (nRF Connect):
+ * TABELA CAPTURADA do estoque em 28/08/2026, com o nRF Connect, comparando
+ * com o app oficial:
+ *
  *   Company ID    0x00FF
  *   Service UUID  0xAE8F
  *   Prefixo       6DB643CE97FE427C
- *   Sufixo E7075E  -> velocidade 2   (CONFIRMADO no aparelho)
  *
- * Os demais sufixos vem da documentacao publica do protocolo e ainda
- * precisam de confirmacao no aparelho. Se algum nao responder, corrija
- * pela tela de Ajustes do app -- os valores ficam em SharedPreferences e
- * NAO exigem recompilar.
+ *   Parar         E5157D
+ *   9 modos       E0B82A E1313B E2AA09 E32318 E49C6C
+ *                 E68E4F E7075E ECD4E0 ED5DF1
+ *
+ * O aparelho NAO tem 3 velocidades -- tem 9 modos de fabrica. A versao
+ * anterior do app usava so 4 bytes, dois deles fracos, e por isso tudo
+ * saia fraco. Agora os 9 estao disponiveis.
+ *
+ * Tudo aqui e editavel pela tela de Ajustes: se a fabrica trocar o firmware
+ * de um lote, basta capturar o pacote novo e digitar, sem recompilar.
  */
 object Protocol {
 
     private const val PREFS = "anjos_vibe_protocol"
-
-    /** Base UUID de 16 bits do Bluetooth SIG. */
     private const val BASE_UUID = "0000%s-0000-1000-8000-00805F9B34FB"
+
+    const val TOTAL_MODOS = 9
 
     // ---- Valores de fabrica ----------------------------------------------
 
     const val DEFAULT_COMPANY_ID = 0x00FF
     const val DEFAULT_SERVICE_UUID = "AE8F"
     const val DEFAULT_PREFIX = "6DB643CE97FE427C"
-
-    /** Sufixos: 3 bytes finais que carregam o comando. */
     const val DEFAULT_STOP = "E5157D"
-    const val DEFAULT_SPEED_1 = "E49C6C"
-    const val DEFAULT_SPEED_2 = "E7075E" // confirmado
-    const val DEFAULT_SPEED_3 = "E68E4F"
 
-    // ---- Leitura / escrita -----------------------------------------------
+    /** Os 9 modos, na ordem em que aparecem no app oficial. */
+    val DEFAULT_MODOS = listOf(
+        "E0B82A", "E1313B", "E2AA09", "E32318", "E49C6C",
+        "E68E4F", "E7075E", "ECD4E0", "ED5DF1"
+    )
+
+    /**
+     * Quais modos os padroes, o desenho e a musica usam como
+     * "fraco / medio / forte". Ajustavel: so quem testou o aparelho sabe
+     * quais dos 9 sao velocidades constantes e quais sao padroes proprios.
+     */
+    val DEFAULT_ESCALA = listOf(0, 4, 6)
+
+    // ---- Leitura ---------------------------------------------------------
 
     private fun prefs(ctx: Context) =
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -56,40 +70,67 @@ object Protocol {
     fun prefix(ctx: Context): String =
         prefs(ctx).getString("prefix", DEFAULT_PREFIX)!!
 
-    fun suffix(ctx: Context, level: Int): String {
-        val key = "suffix_$level"
-        val fallback = when (level) {
-            1 -> DEFAULT_SPEED_1
-            2 -> DEFAULT_SPEED_2
-            3 -> DEFAULT_SPEED_3
-            else -> DEFAULT_STOP
-        }
-        return prefs(ctx).getString(key, fallback)!!
+    fun stopSuffix(ctx: Context): String =
+        prefs(ctx).getString("stop", DEFAULT_STOP)!!
+
+    /** Sufixo do modo 1..9. */
+    fun modoSuffix(ctx: Context, modo: Int): String {
+        val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)
+        return prefs(ctx).getString("modo_$i", DEFAULT_MODOS[i])!!
     }
 
-    /** Monta os 11 bytes completos do comando para um nivel 0..3. */
-    fun payload(ctx: Context, level: Int): ByteArray =
-        hexToBytes(prefix(ctx) + suffix(ctx, level.coerceIn(0, 3)))
+    /** Nome que o cliente deu ao modo, se deu. */
+    fun modoNome(ctx: Context, modo: Int): String {
+        val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)
+        return prefs(ctx).getString("nome_$i", "Modo $modo")!!
+    }
 
-    fun save(
-        ctx: Context,
-        companyId: Int,
-        serviceUuid: String,
-        prefix: String,
-        stop: String,
-        speed1: String,
-        speed2: String,
-        speed3: String
-    ) {
+    fun setModoNome(ctx: Context, modo: Int, nome: String) {
+        val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)
+        prefs(ctx).edit().putString("nome_$i", nome.ifBlank { "Modo $modo" }).apply()
+    }
+
+    /**
+     * Os 3 modos usados como escala de intensidade pelos padroes, pelo
+     * desenho e pela musica. Devolve numeros de modo 1..9.
+     */
+    fun escala(ctx: Context): List<Int> {
+        val raw = prefs(ctx).getString("escala", null)
+            ?: return DEFAULT_ESCALA.map { it + 1 }
+        return try {
+            raw.split(",").map { it.trim().toInt().coerceIn(1, TOTAL_MODOS) }
+                .take(3).ifEmpty { DEFAULT_ESCALA.map { it + 1 } }
+        } catch (e: Exception) {
+            DEFAULT_ESCALA.map { it + 1 }
+        }
+    }
+
+    fun setEscala(ctx: Context, modos: List<Int>) {
+        prefs(ctx).edit()
+            .putString("escala", modos.joinToString(",") { it.coerceIn(1, TOTAL_MODOS).toString() })
+            .apply()
+    }
+
+    /** Pacote de 11 bytes do modo 1..9. Modo 0 = parar. */
+    fun payload(ctx: Context, modo: Int): ByteArray {
+        val suffix = if (modo <= 0) stopSuffix(ctx) else modoSuffix(ctx, modo)
+        return hexToBytes(prefix(ctx) + suffix)
+    }
+
+    // ---- Escrita ---------------------------------------------------------
+
+    fun saveBase(ctx: Context, companyId: Int, serviceUuid: String, prefix: String, stop: String) {
         prefs(ctx).edit()
             .putInt("company_id", companyId)
             .putString("service_uuid", serviceUuid.trim().uppercase())
             .putString("prefix", prefix.trim().uppercase())
-            .putString("suffix_0", stop.trim().uppercase())
-            .putString("suffix_1", speed1.trim().uppercase())
-            .putString("suffix_2", speed2.trim().uppercase())
-            .putString("suffix_3", speed3.trim().uppercase())
+            .putString("stop", stop.trim().uppercase())
             .apply()
+    }
+
+    fun saveModo(ctx: Context, modo: Int, suffix: String) {
+        val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)
+        prefs(ctx).edit().putString("modo_$i", suffix.trim().uppercase()).apply()
     }
 
     fun restoreDefaults(ctx: Context) {
@@ -109,7 +150,6 @@ object Protocol {
     fun bytesToHex(bytes: ByteArray): String =
         bytes.joinToString("") { "%02X".format(it) }
 
-    /** Valida uma string hex antes de salvar. Retorna null se estiver ok. */
     fun validateHex(value: String, expectedBytes: Int?): String? {
         val clean = value.replace(" ", "").removePrefix("0x").removePrefix("0X")
         if (clean.isEmpty()) return "Campo vazio"

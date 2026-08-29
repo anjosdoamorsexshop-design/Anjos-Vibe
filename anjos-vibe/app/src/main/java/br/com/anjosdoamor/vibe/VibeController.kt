@@ -15,15 +15,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-enum class Mode { MANUAL, PADRAO, MUSICA }
+enum class Mode { MANUAL, PADRAO, MUSICA, DIRETO }
 
 data class VibeState(
     val running: Boolean = false,
     val mode: Mode = Mode.MANUAL,
     val intensity: Float = 0f,
-    val currentLevel: Int = 0,
+    val currentMode: Int = 0,
     val patternId: String? = null,
-    val smoothMode: Boolean = true,
+    val smoothMode: Boolean = false,
+    val directMode: Int = 0,
+    val gain: Float = 1.6f,
     val error: String? = null,
     val timerEndsAt: Long? = null
 )
@@ -59,7 +61,9 @@ object VibeController {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         broadcaster = BleBroadcaster(appContext).also {
-            driver = IntensityDriver(it)
+            driver = IntensityDriver(it).apply {
+                escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
+            }
         }
     }
 
@@ -76,18 +80,24 @@ object VibeController {
         }
     }
 
-    /** Botao direto de nivel: 0, 1, 2 ou 3. */
-    fun setLevel(level: Int) {
-        val v = when (level.coerceIn(0, 3)) {
-            0 -> 0f
-            1 -> 1f / 3f
-            2 -> 2f / 3f
-            else -> 1f
+    /**
+     * Aciona um dos 9 modos do aparelho, direto, sem curva e sem
+     * alternancia. Modo 0 para tudo.
+     */
+    fun setMode(mode: Int) {
+        val target = mode.coerceIn(0, br.com.anjosdoamor.vibe.ble.Protocol.TOTAL_MODOS)
+        if (target == 0) {
+            stop()
+            return
         }
-        _state.value = _state.value.copy(mode = Mode.MANUAL, patternId = null)
         activePattern = null
-        setManualIntensity(v)
-        if (level == 0) stop()
+        _state.value = _state.value.copy(
+            mode = Mode.DIRETO,
+            directMode = target,
+            patternId = null,
+            intensity = 1f
+        )
+        start()
     }
 
     fun playPattern(pattern: Pattern) {
@@ -114,6 +124,21 @@ object VibeController {
     fun setSmoothMode(enabled: Boolean) {
         driver?.smoothMode = enabled
         _state.value = _state.value.copy(smoothMode = enabled)
+    }
+
+    /**
+     * Forca. 1.0 mantem a curva original, valores maiores empurram tudo
+     * para cima sem perder a forma do padrao.
+     */
+    /** Recarrega a escala de intensidade depois de mudar nos Ajustes. */
+    fun reloadEscala() {
+        driver?.escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
+    }
+
+    fun setGain(value: Float) {
+        val g = value.coerceIn(1f, 2.6f)
+        driver?.gain = g
+        _state.value = _state.value.copy(gain = g)
     }
 
     fun setMusicSensitivity(value: Float) {
@@ -146,18 +171,30 @@ object VibeController {
                     }
                 }
 
+                if (s.mode == Mode.DIRETO) {
+                    // Sem driver: nivel travado, pacote puro
+                    broadcaster?.setMode(s.directMode)
+                    _state.value = _state.value.copy(
+                        currentMode = broadcaster?.currentMode ?: 0,
+                        error = broadcaster?.lastError
+                    )
+                    delay(TICK_MS)
+                    continue
+                }
+
                 val intensity = when (s.mode) {
                     Mode.MANUAL -> manualIntensity
                     Mode.PADRAO -> activePattern
                         ?.valueAt(System.currentTimeMillis() - patternStartedAt) ?: 0f
                     Mode.MUSICA -> beat.intensity
+                    Mode.DIRETO -> 0f
                 }
 
                 driver?.apply(intensity)
 
                 _state.value = _state.value.copy(
                     intensity = intensity,
-                    currentLevel = broadcaster?.currentLevel ?: 0,
+                    currentMode = broadcaster?.currentMode ?: 0,
                     error = broadcaster?.lastError
                 )
 
@@ -181,13 +218,14 @@ object VibeController {
         scope.launch {
             repeat(3) {
                 delay(120)
-                broadcaster?.forceLevel(0)
+                broadcaster?.forceMode(0)
             }
         }
         _state.value = _state.value.copy(
+            directMode = 0,
             running = false,
             intensity = 0f,
-            currentLevel = 0,
+            currentMode = 0,
             patternId = null,
             timerEndsAt = null
         )

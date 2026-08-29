@@ -1,6 +1,16 @@
 package br.com.anjosdoamor.vibe.ui
 
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -151,7 +161,7 @@ fun ControleScreen(state: VibeState) {
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ModoButton(
     numero: Int,
@@ -166,9 +176,7 @@ private fun ModoButton(
         color = if (ativo) Brand.Magenta else Brand.Superficie,
         modifier = modifier
             .height(76.dp)
-            .then(
-                Modifier.combinedClickableCompat(onClick = onClick, onLongClick = onLongClick)
-            )
+            .combinedClickableCompat(onClick = onClick, onLongClick = onLongClick)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -193,15 +201,13 @@ private fun ModoButton(
     }
 }
 
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 private fun Modifier.combinedClickableCompat(
     onClick: () -> Unit,
     onLongClick: () -> Unit
-): Modifier = this.then(
-    androidx.compose.foundation.combinedClickable(
-        onClick = onClick,
-        onLongClick = onLongClick
-    )
+): Modifier = this.combinedClickable(
+    onClick = onClick,
+    onLongClick = onLongClick
 )
 
 /** Barra que pulsa enquanto ha sessao ativa. */
@@ -230,9 +236,9 @@ private fun PulseBar(ativo: Boolean, intensidade: Float) {
                     if (ativo) listOf(Brand.Rosa, Brand.Magenta)
                     else listOf(Brand.TextoFraco.copy(alpha = 0.2f), Brand.TextoFraco.copy(alpha = 0.2f))
                 ),
-                topLeft = androidx.compose.ui.geometry.Offset(i * (w + gap), (size.height - h) / 2),
-                size = androidx.compose.ui.geometry.Size(w, h),
-                cornerRadius = androidx.compose.ui.geometry.CornerRadius(w / 2)
+                topLeft = Offset(i * (w + gap), (size.height - h) / 2),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(w / 2)
             )
         }
     }
@@ -241,13 +247,13 @@ private fun PulseBar(ativo: Boolean, intensidade: Float) {
 @Composable
 private fun rememberInfiniteTransitionSafe(ativo: Boolean): Float {
     if (!ativo) return 0f
-    val t = androidx.compose.animation.core.rememberInfiniteTransition(label = "pulso")
+    val t = rememberInfiniteTransition(label = "pulso")
     val v by t.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-            animation = androidx.compose.animation.core.tween(1800),
-            repeatMode = androidx.compose.animation.core.RepeatMode.Restart
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800),
+            repeatMode = RepeatMode.Restart
         ),
         label = "fase"
     )

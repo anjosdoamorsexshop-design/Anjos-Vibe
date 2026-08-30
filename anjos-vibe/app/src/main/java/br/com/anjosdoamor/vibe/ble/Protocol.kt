@@ -49,10 +49,16 @@ object Protocol {
 
     /**
      * Quais modos os padroes, o desenho e a musica usam como
-     * "fraco / medio / forte". Ajustavel: so quem testou o aparelho sabe
-     * quais dos 9 sao velocidades constantes e quais sao padroes proprios.
+     * "fraco / medio / forte".
+     *
+     * CONFIRMADO no aparelho em 29/08/2026: os modos 1, 2 e 3 sao as
+     * velocidades constantes, em ordem crescente de forca. Do 4 ao 9 sao
+     * padroes proprios de fabrica -- ja pulsam sozinhos, e usa-los como
+     * degrau de intensidade estraga a curva dos padroes e do desenho.
+     *
+     * Indices baseados em zero: 0, 1, 2 = modos 1, 2 e 3.
      */
-    val DEFAULT_ESCALA = listOf(0, 4, 6)
+    val DEFAULT_ESCALA = listOf(0, 1, 2)
 
     // ---- Leitura ---------------------------------------------------------
 
@@ -80,9 +86,17 @@ object Protocol {
     }
 
     /** Nome que o cliente deu ao modo, se deu. */
+    /** Nomes de fabrica dos modos ja identificados no aparelho. */
+    private val NOMES_PADRAO = mapOf(
+        1 to "Continuo fraco",
+        2 to "Continuo medio",
+        3 to "Continuo forte"
+    )
+
     fun modoNome(ctx: Context, modo: Int): String {
         val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)
-        return prefs(ctx).getString("nome_$i", "Modo $modo")!!
+        val padrao = NOMES_PADRAO[modo] ?: "Modo $modo"
+        return prefs(ctx).getString("nome_$i", padrao)!!
     }
 
     fun setModoNome(ctx: Context, modo: Int, nome: String) {

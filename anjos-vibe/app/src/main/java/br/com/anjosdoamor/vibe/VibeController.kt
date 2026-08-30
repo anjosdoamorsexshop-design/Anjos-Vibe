@@ -61,6 +61,7 @@ object VibeController {
         if (::appContext.isInitialized) return
         appContext = context.applicationContext
         broadcaster = BleBroadcaster(appContext).also {
+            it.refreshIntervalMs = br.com.anjosdoamor.vibe.ble.Protocol.refreshMs(appContext)
             driver = IntensityDriver(it).apply {
                 escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
             }
@@ -130,9 +131,11 @@ object VibeController {
      * Forca. 1.0 mantem a curva original, valores maiores empurram tudo
      * para cima sem perder a forma do padrao.
      */
-    /** Recarrega a escala de intensidade depois de mudar nos Ajustes. */
+    /** Recarrega as preferencias depois de mudar nos Ajustes. */
     fun reloadEscala() {
         driver?.escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
+        broadcaster?.refreshIntervalMs =
+            br.com.anjosdoamor.vibe.ble.Protocol.refreshMs(appContext)
     }
 
     fun setGain(value: Float) {

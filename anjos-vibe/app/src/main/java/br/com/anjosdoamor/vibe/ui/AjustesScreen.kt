@@ -40,6 +40,7 @@ fun AjustesScreen() {
         }.toTypedArray())
     }
     var escala by remember { mutableStateOf(Protocol.escala(context)) }
+    var refresh by remember { mutableFloatStateOf(Protocol.refreshMs(context).toFloat()) }
     var mensagem by remember { mutableStateOf<String?>(null) }
 
     val status = VibeController.bleStatus()
@@ -117,6 +118,43 @@ fun AjustesScreen() {
             modifier = Modifier.fillMaxWidth().height(48.dp),
             shape = RoundedCornerShape(14.dp)
         ) { Text("Salvar escala") }
+
+        Spacer(Modifier.height(32.dp))
+
+        // ---- Reenvio da transmissao --------------------------------------
+
+        Text("FORCA DA TRANSMISSAO", style = MaterialTheme.typography.labelSmall, color = Brand.TextoFraco)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            "Desligado significa transmissao continua e estavel -- e o que " +
+                "deixa o motor mais forte, porque ele nunca fica sem sinal. " +
+                "So ligue o reenvio para teste: cada reenvio cria um intervalo " +
+                "de silencio que enfraquece a vibracao.",
+            color = Brand.TextoFraco,
+            fontSize = 12.sp
+        )
+
+        Spacer(Modifier.height(12.dp))
+
+        Text(
+            if (refresh <= 0f) "Reenvio desligado" else "Reenviar a cada ${refresh.toInt()} ms",
+            color = Brand.Texto,
+            fontSize = 14.sp
+        )
+        Slider(
+            value = refresh,
+            onValueChange = { refresh = it },
+            onValueChangeFinished = {
+                Protocol.setRefreshMs(context, refresh.toLong())
+                VibeController.reloadEscala()
+            },
+            valueRange = 0f..600f
+        )
+        Text(
+            "Deixe desligado, que e o recomendado.",
+            color = Brand.TextoFraco,
+            fontSize = 11.sp
+        )
 
         Spacer(Modifier.height(32.dp))
 
@@ -210,6 +248,7 @@ fun AjustesScreen() {
                 stop = Protocol.DEFAULT_STOP
                 Protocol.DEFAULT_MODOS.forEachIndexed { i, v -> modos[i] = v }
                 escala = Protocol.DEFAULT_ESCALA.map { it + 1 }
+                refresh = 0f
                 VibeController.reloadEscala()
                 mensagem = "Valores de fabrica restaurados."
             },

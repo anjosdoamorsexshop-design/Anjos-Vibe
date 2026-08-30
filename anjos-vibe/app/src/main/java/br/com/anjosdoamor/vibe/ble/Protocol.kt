@@ -133,6 +133,14 @@ object Protocol {
         prefs(ctx).edit().putString("modo_$i", suffix.trim().uppercase()).apply()
     }
 
+    /** Intervalo de reenvio da transmissao, em ms. 0 desliga. */
+    fun refreshMs(ctx: Context): Long =
+        prefs(ctx).getLong("refresh_ms", 0L)
+
+    fun setRefreshMs(ctx: Context, ms: Long) {
+        prefs(ctx).edit().putLong("refresh_ms", ms.coerceIn(0L, 2000L)).apply()
+    }
+
     fun restoreDefaults(ctx: Context) {
         prefs(ctx).edit().clear().apply()
     }

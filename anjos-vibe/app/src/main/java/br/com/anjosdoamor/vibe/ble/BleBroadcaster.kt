@@ -38,6 +38,35 @@ class BleBroadcaster(private val context: Context) {
     var currentMode: Int = -1
         private set
 
+    /**
+     * De quantos em quantos ms a transmissao e reiniciada, mesmo sem
+     * mudanca de modo. 0 desliga o reenvio.
+     *
+     * POR QUE COMECA DESLIGADO: no scanner, o app oficial aparece com
+     * UM endereco estavel, enquanto o nosso aparecia com varios. Cada
+     * endereco novo e uma reinicializacao do anuncio, e cada
+     * reinicializacao tem um intervalo de silencio -- tempo em que o
+     * aparelho nao recebe nada e o motor perde rotacao. Por isso a
+     * transmissao continua e estavel e o comportamento correto.
+     *
+     * O ajuste fica exposto na tela de Ajustes so para teste: se em
+     * algum lote o reenvio ajudar, da para ligar sem recompilar.
+     */
+    var refreshIntervalMs: Long = 0L
+
+    private var lastStartAt: Long = 0
+
+    /**
+     * Nunca reiniciar a transmissao mais rapido que isso.
+     *
+     * O stopAdvertising do Android e assincrono: parar e comecar no mesmo
+     * instante faz o comeco falhar. Sem essa trava, uma falha marcava o
+     * estado como "nada no ar", o laco tentava de novo 80ms depois, e o
+     * ciclo se repetia -- resultado, um endereco novo a cada tentativa e
+     * o motor nunca firmando rotacao.
+     */
+    private val minRestartGapMs = 150L
+
     var lastError: String? = null
         private set
 
@@ -70,10 +99,18 @@ class BleBroadcaster(private val context: Context) {
         return advertiser
     }
 
-    /** Coloca no ar o modo informado. Nao faz nada se ja for o modo atual. */
+    /**
+     * Coloca no ar o modo informado.
+     *
+     * Se o modo ja for o atual, reenvia mesmo assim depois de
+     * [refreshIntervalMs] -- ver a explicacao no campo.
+     */
     fun setMode(mode: Int) {
         val target = mode.coerceIn(0, Protocol.TOTAL_MODOS)
-        if (target == currentMode) return
+        if (target == currentMode) {
+            if (refreshIntervalMs <= 0L) return
+            if (System.currentTimeMillis() - lastStartAt < refreshIntervalMs) return
+        }
         forceMode(target)
     }
 
@@ -90,6 +127,10 @@ class BleBroadcaster(private val context: Context) {
             lastError = "Permissao de Bluetooth nao concedida."
             return
         }
+
+        // Trava contra reinicio em cascata
+        val agora = System.currentTimeMillis()
+        if (agora - lastStartAt < minRestartGapMs && currentMode == target) return
 
         stopInternal()
 
@@ -121,10 +162,17 @@ class BleBroadcaster(private val context: Context) {
             }
 
             override fun onStartFailure(errorCode: Int) {
+                // ALREADY_STARTED nao e falha de verdade: alguma coisa ja
+                // esta no ar. Zerar o estado aqui era o que criava o ciclo
+                // de reinicios que enfraquecia a vibracao.
+                if (errorCode == ADVERTISE_FAILED_ALREADY_STARTED) {
+                    lastError = null
+                    return
+                }
+
                 lastError = when (errorCode) {
                     ADVERTISE_FAILED_DATA_TOO_LARGE -> "Pacote grande demais (max 31 bytes)."
                     ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Sistema ocupado. Desligue e ligue o Bluetooth."
-                    ADVERTISE_FAILED_ALREADY_STARTED -> "Ja estava transmitindo."
                     ADVERTISE_FAILED_INTERNAL_ERROR -> "Erro interno do Bluetooth."
                     ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "Este aparelho nao suporta transmitir."
                     else -> "Falha ao transmitir (codigo $errorCode)."
@@ -138,6 +186,7 @@ class BleBroadcaster(private val context: Context) {
             adv.startAdvertising(settings, data, callback)
             currentCallback = callback
             currentMode = target
+            lastStartAt = System.currentTimeMillis()
         } catch (e: Exception) {
             lastError = e.message
             currentMode = -1

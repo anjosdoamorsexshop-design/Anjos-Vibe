@@ -71,6 +71,29 @@ object VibeController {
     fun bleStatus(): BleBroadcaster.Status =
         broadcaster?.status() ?: BleBroadcaster.Status.SEM_BLUETOOTH
 
+    /** Linhas do painel de diagnostico da tela de Ajustes. */
+    fun diagnostico(): List<String> {
+        val b = broadcaster ?: return listOf("Bluetooth nao iniciado")
+        val p = br.com.anjosdoamor.vibe.ble.Protocol
+        val refresh = p.refreshMs(appContext)
+        return listOf(
+            "Modo no ar: ${if (b.currentMode < 0) "nenhum" else b.currentMode.toString()}",
+            "Religadas: ${b.startCount}",
+            "No ar sem religar: ${b.onAirMs() / 1000} s",
+            "Recusas do Android: ${b.failCount}" +
+                if (b.lastFailCode != 0) " (codigo ${b.lastFailCode})" else "",
+            "Ja estava no ar: ${b.alreadyStartedCount}",
+            "Reenvio salvo: ${if (refresh <= 0L) "desligado" else "$refresh ms"}",
+            "Escala salva: ${p.escala(appContext).joinToString(", ")}",
+            "Celular: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
+                "Android ${android.os.Build.VERSION.RELEASE}"
+        )
+    }
+
+    fun zerarDiagnostico() {
+        broadcaster?.resetCounters()
+    }
+
     // ---- Comandos ---------------------------------------------------------
 
     fun setManualIntensity(value: Float) {

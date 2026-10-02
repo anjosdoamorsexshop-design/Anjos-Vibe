@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.sp
 import br.com.anjosdoamor.vibe.VibeController
 import br.com.anjosdoamor.vibe.ble.BleBroadcaster
 import br.com.anjosdoamor.vibe.ble.Protocol
+import kotlinx.coroutines.delay
 
 /**
  * Ajustes tecnicos.
@@ -74,6 +75,46 @@ fun AjustesScreen() {
                     color = Brand.Texto,
                     fontSize = 15.sp
                 )
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+
+        // ---- Diagnostico da transmissao ----------------------------------
+
+        var diagnostico by remember { mutableStateOf(VibeController.diagnostico()) }
+        LaunchedEffect(Unit) {
+            while (true) {
+                diagnostico = VibeController.diagnostico()
+                delay(500)
+            }
+        }
+
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Brand.Superficie,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(Modifier.padding(14.dp)) {
+                Text("DIAGNOSTICO", style = MaterialTheme.typography.labelSmall, color = Brand.TextoFraco)
+                Spacer(Modifier.height(6.dp))
+                diagnostico.forEach { linha ->
+                    Text(
+                        linha,
+                        color = Brand.Texto,
+                        fontSize = 13.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    "Com um modo fixo ligado, \"Religadas\" nao pode subir sozinho.",
+                    color = Brand.TextoFraco,
+                    fontSize = 11.sp
+                )
+                TextButton(onClick = { VibeController.zerarDiagnostico() }) {
+                    Text("Zerar contadores", color = Brand.Rosa)
+                }
             }
         }
 

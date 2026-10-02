@@ -70,6 +70,39 @@ class BleBroadcaster(private val context: Context) {
     var lastError: String? = null
         private set
 
+    // ---- Diagnostico ------------------------------------------------------
+    // Contadores mostrados na tela de Ajustes. Com um modo fixo no ar, o
+    // numero de religadas nao pode subir: cada religada e um buraco de
+    // silencio que o motor sente.
+
+    /** Quantas vezes a transmissao foi (re)iniciada desde que o app abriu. */
+    @Volatile var startCount: Int = 0
+        private set
+
+    /** Quantas vezes o Android recusou iniciar a transmissao. */
+    @Volatile var failCount: Int = 0
+        private set
+
+    /** Quantas vezes o Android respondeu "ja estava no ar". */
+    @Volatile var alreadyStartedCount: Int = 0
+        private set
+
+    /** Codigo da ultima recusa, ou 0 se nunca houve. */
+    @Volatile var lastFailCode: Int = 0
+        private set
+
+    /** Ha quantos ms a transmissao atual esta no ar sem ser religada. */
+    fun onAirMs(): Long =
+        if (currentMode < 0 || lastStartAt == 0L) 0L
+        else System.currentTimeMillis() - lastStartAt
+
+    fun resetCounters() {
+        startCount = 0
+        failCount = 0
+        alreadyStartedCount = 0
+        lastFailCode = 0
+    }
+
     fun status(): Status {
         val manager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
             ?: return Status.SEM_BLUETOOTH
@@ -166,9 +199,13 @@ class BleBroadcaster(private val context: Context) {
                 // esta no ar. Zerar o estado aqui era o que criava o ciclo
                 // de reinicios que enfraquecia a vibracao.
                 if (errorCode == ADVERTISE_FAILED_ALREADY_STARTED) {
+                    alreadyStartedCount++
                     lastError = null
                     return
                 }
+
+                failCount++
+                lastFailCode = errorCode
 
                 lastError = when (errorCode) {
                     ADVERTISE_FAILED_DATA_TOO_LARGE -> "Pacote grande demais (max 31 bytes)."
@@ -187,6 +224,7 @@ class BleBroadcaster(private val context: Context) {
             currentCallback = callback
             currentMode = target
             lastStartAt = System.currentTimeMillis()
+            startCount++
         } catch (e: Exception) {
             lastError = e.message
             currentMode = -1

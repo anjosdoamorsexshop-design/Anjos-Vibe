@@ -16,6 +16,19 @@ android {
         versionName = "1.0"
     }
 
+    // Chave de TESTE fixa: todo APK de debug sai com a mesma assinatura e
+    // instala por cima do anterior. Nao serve para a Play Store -- a chave
+    // de release nunca entra no repositorio.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+            storeType = "pkcs12"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true

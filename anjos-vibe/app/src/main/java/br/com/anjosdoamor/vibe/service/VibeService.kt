@@ -6,10 +6,16 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import br.com.anjosdoamor.vibe.MainActivity
 import br.com.anjosdoamor.vibe.R
 import br.com.anjosdoamor.vibe.VibeController
@@ -31,12 +37,11 @@ class VibeService : Service() {
         const val ACTION_STOP = "br.com.anjosdoamor.vibe.STOP"
 
         fun start(context: Context) {
-            val intent = Intent(context, VibeService::class.java).setAction(ACTION_START)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            // Sempre chamado com o app na tela, entao startService basta -- e
+            // nao derruba o app se o Android recusar o primeiro plano.
+            context.startService(
+                Intent(context, VibeService::class.java).setAction(ACTION_START)
+            )
         }
 
         fun stop(context: Context) {
@@ -62,9 +67,35 @@ class VibeService : Service() {
                 stopSelf()
                 return START_NOT_STICKY
             }
-            else -> startForeground(NOTIFICATION_ID, buildNotification())
+            else -> entrarEmPrimeiroPlano()
         }
         return START_STICKY
+    }
+
+    /**
+     * Declara so os tipos que o app pode usar agora.
+     *
+     * Sem tipo explicito o Android assume todos os do manifesto, e o tipo
+     * "microphone" exige a permissao do microfone ja concedida -- quem nunca
+     * abriu a aba Musica nao tem, e o app fechava ao ligar qualquer modo.
+     */
+    private fun entrarEmPrimeiroPlano() {
+        var tipos = 0
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tipos = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+            val temMicrofone = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && temMicrofone) {
+                tipos = tipos or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            }
+        }
+        try {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, buildNotification(), tipos)
+        } catch (e: Exception) {
+            // Sem primeiro plano a sessao ainda funciona com a tela acesa
+            Log.w("AnjosVibe/Service", "startForeground: ${e.message}")
+        }
     }
 
     override fun onDestroy() {

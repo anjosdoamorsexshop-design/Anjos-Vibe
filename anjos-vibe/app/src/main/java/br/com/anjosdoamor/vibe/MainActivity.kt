@@ -92,7 +92,8 @@ fun AppRoot(micPermission: Boolean, onRequestMic: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // Mantem o servico vivo enquanto houver sessao ativa
-    LaunchedEffect(state.running) {
+    // (a troca de modo refaz o pedido: a musica precisa do tipo microfone)
+    LaunchedEffect(state.running, state.mode) {
         if (state.running) VibeService.start(context) else VibeService.stop(context)
     }
 

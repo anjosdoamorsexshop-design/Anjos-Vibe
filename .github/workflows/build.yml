@@ -15,7 +15,11 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # O runner ja traz o SDK do Android. O padrao desta action tenta
+      # instalar o pacote "tools", que deixou de existir e quebrava o build.
       - uses: android-actions/setup-android@v3
+        with:
+          packages: ''
 
       - uses: gradle/actions/setup-gradle@v4
         with:

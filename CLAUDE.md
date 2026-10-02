@@ -13,7 +13,7 @@ Dona do projeto: **Mari** (Mariana), sócia da loja. Ela não programa: o Claude
 | Repositório | https://github.com/anjosdoamorsexshop-design/Anjos-Vibe (público) |
 | Branch principal | `main` |
 | Último commit no `main` | `5f8e9ff` — "Update Protocol.kt" (30/08/2026) — escala 1-2-3 + nomes dos modos contínuos |
-| Clone local no PC (Windows) | `C:\Users\anjos\OneDrive\Documentos\GitHub\Anjos-Vibe` (gerenciado pelo GitHub Desktop) |
+| Clone local no PC (Windows) | `C:\Anjos Central\App Anjos Vibe` (pasta oficial de trabalho). Clone antigo em `C:\Users\anjos\OneDrive\Documentos\GitHub\Anjos-Vibe` (GitHub Desktop) — não usar mais |
 | Build | GitHub Actions, workflow **"Gerar APK"** (`.github/workflows/build.yml`), roda a cada push e manualmente |
 | **Último APK** | **Run #19** (commit `5f8e9ff`, sucesso) → https://github.com/anjosdoamorsexshop-design/Anjos-Vibe/actions/runs/33329281448 → artifact `anjos-vibe-apk` (contém `app-debug.apk`) |
 | Versão do app | `versionCode = 1`, `versionName = "1.0"` (nunca foi incrementada) |

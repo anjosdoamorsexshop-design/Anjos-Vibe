@@ -79,6 +79,7 @@ object VibeController {
         return listOf(
             "Modo no ar: ${if (b.currentMode < 0) "nenhum" else b.currentMode.toString()}",
             "Religadas: ${b.startCount}",
+            "Trocas sem religar: ${b.dataChangeCount}",
             "No ar sem religar: ${b.onAirMs() / 1000} s",
             "Recusas do Android: ${b.failCount}" +
                 if (b.lastFailCode != 0) " (codigo ${b.lastFailCode})" else "",

@@ -7,11 +7,15 @@ import android.bluetooth.BluetoothManager
 import android.bluetooth.le.AdvertiseCallback
 import android.bluetooth.le.AdvertiseData
 import android.bluetooth.le.AdvertiseSettings
+import android.bluetooth.le.AdvertisingSet
+import android.bluetooth.le.AdvertisingSetCallback
+import android.bluetooth.le.AdvertisingSetParameters
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 
 /**
@@ -138,16 +142,31 @@ class BleBroadcaster(private val context: Context) {
      * Se o modo ja for o atual, reenvia mesmo assim depois de
      * [refreshIntervalMs] -- ver a explicacao no campo.
      */
+    @Synchronized
     fun setMode(mode: Int) {
         val target = mode.coerceIn(0, Protocol.TOTAL_MODOS)
         if (target == currentMode) {
             if (refreshIntervalMs <= 0L) return
             if (System.currentTimeMillis() - lastStartAt < refreshIntervalMs) return
+            // Reenvio ligado nos Ajustes: derruba para religar do zero
+            stopSet()
         }
         forceMode(target)
     }
 
+    private fun buildData(target: Int): AdvertiseData =
+        AdvertiseData.Builder()
+            .setIncludeDeviceName(false)
+            .setIncludeTxPowerLevel(false)
+            .addManufacturerData(
+                Protocol.companyId(context),
+                Protocol.payload(context, target)
+            )
+            .addServiceUuid(Protocol.serviceUuid(context))
+            .build()
+
     /** Reenvia o comando mesmo que ja seja o modo atual. */
+    @Synchronized
     @SuppressLint("MissingPermission")
     fun forceMode(mode: Int) {
         val target = mode.coerceIn(0, Protocol.TOTAL_MODOS)
@@ -158,6 +177,19 @@ class BleBroadcaster(private val context: Context) {
         }
         if (!hasPermission()) {
             lastError = "Permissao de Bluetooth nao concedida."
+            return
+        }
+
+        val data = try {
+            buildData(target)
+        } catch (e: Exception) {
+            lastError = "Comando invalido nos Ajustes: ${e.message}"
+            return
+        }
+
+        // Android 8+: troca o pacote com a transmissao no ar, sem religar
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            forceModeSet(adv, target, data)
             return
         }
 
@@ -173,21 +205,6 @@ class BleBroadcaster(private val context: Context) {
             .setConnectable(true)
             .setTimeout(0)
             .build()
-
-        val data = try {
-            AdvertiseData.Builder()
-                .setIncludeDeviceName(false)
-                .setIncludeTxPowerLevel(false)
-                .addManufacturerData(
-                    Protocol.companyId(context),
-                    Protocol.payload(context, target)
-                )
-                .addServiceUuid(Protocol.serviceUuid(context))
-                .build()
-        } catch (e: Exception) {
-            lastError = "Comando invalido nos Ajustes: ${e.message}"
-            return
-        }
 
         val callback = object : AdvertiseCallback() {
             override fun onStartSuccess(settingsInEffect: AdvertiseSettings?) {
@@ -231,6 +248,128 @@ class BleBroadcaster(private val context: Context) {
         }
     }
 
+    // ---- Android 8+: uma transmissao so, trocando apenas o pacote ----------
+    //
+    // Parar e recomecar a transmissao a cada troca de modo deixava um
+    // buraco de silencio por troca. Num padrao isso e um tranco a cada
+    // degrau. Com o AdvertisingSet a transmissao fica no ar o tempo todo e
+    // so os bytes mudam -- mesmo endereco, sem buraco.
+
+    private var advSet: AdvertisingSet? = null
+    private var setCallback: AdvertisingSetCallback? = null
+    private var setStarting = false
+
+    /** Quantas vezes o pacote foi trocado sem religar a transmissao. */
+    @Volatile var dataChangeCount: Int = 0
+        private set
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    @SuppressLint("MissingPermission")
+    private fun forceModeSet(adv: BluetoothLeAdvertiser, target: Int, data: AdvertiseData) {
+        val set = advSet
+        if (set != null) {
+            try {
+                set.setAdvertisingData(data)
+                currentMode = target
+                dataChangeCount++
+            } catch (e: Exception) {
+                lastError = e.message
+                stopSet()
+                currentMode = -1
+            }
+            return
+        }
+
+        // Ainda subindo: guarda o modo, o callback aplica quando estiver no ar
+        if (setStarting) {
+            currentMode = target
+            return
+        }
+
+        if (System.currentTimeMillis() - lastStartAt < minRestartGapMs) return
+
+        val params = AdvertisingSetParameters.Builder()
+            .setLegacyMode(true)
+            .setConnectable(true)
+            .setScannable(true)
+            .setInterval(AdvertisingSetParameters.INTERVAL_MIN)
+            .setTxPowerLevel(AdvertisingSetParameters.TX_POWER_HIGH)
+            .build()
+
+        val callback = object : AdvertisingSetCallback() {
+            override fun onAdvertisingSetStarted(
+                advertisingSet: AdvertisingSet?, txPower: Int, status: Int
+            ) {
+                val eu = this
+                synchronized(this@BleBroadcaster) {
+                setStarting = false
+                if (setCallback !== eu) return@synchronized
+                if (status != ADVERTISE_SUCCESS || advertisingSet == null) {
+                    failCount++
+                    lastFailCode = status
+                    lastError = when (status) {
+                        ADVERTISE_FAILED_DATA_TOO_LARGE -> "Pacote grande demais (max 31 bytes)."
+                        ADVERTISE_FAILED_TOO_MANY_ADVERTISERS -> "Sistema ocupado. Desligue e ligue o Bluetooth."
+                        ADVERTISE_FAILED_INTERNAL_ERROR -> "Erro interno do Bluetooth."
+                        ADVERTISE_FAILED_FEATURE_UNSUPPORTED -> "Este aparelho nao suporta transmitir."
+                        else -> "Falha ao transmitir (codigo $status)."
+                    }
+                    Log.w(TAG, lastError ?: "")
+                    setCallback = null
+                    currentMode = -1
+                    return@synchronized
+                }
+                lastError = null
+                advSet = advertisingSet
+                // O modo pode ter mudado enquanto a transmissao subia
+                if (currentMode != target && currentMode >= 0) {
+                    try {
+                        advertisingSet.setAdvertisingData(buildData(currentMode))
+                        dataChangeCount++
+                    } catch (e: Exception) {
+                        lastError = e.message
+                    }
+                }
+                }
+            }
+
+            override fun onAdvertisingDataSet(advertisingSet: AdvertisingSet?, status: Int) {
+                if (status != ADVERTISE_SUCCESS) {
+                    failCount++
+                    lastFailCode = status
+                    lastError = "Falha ao trocar o comando (codigo $status)."
+                    Log.w(TAG, lastError ?: "")
+                }
+            }
+        }
+
+        try {
+            adv.startAdvertisingSet(params, data, null, null, null, callback)
+            setCallback = callback
+            setStarting = true
+            currentMode = target
+            lastStartAt = System.currentTimeMillis()
+            startCount++
+        } catch (e: Exception) {
+            lastError = e.message
+            currentMode = -1
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun stopSet() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val cb = setCallback ?: return
+        try {
+            advertiser()?.stopAdvertisingSet(cb)
+        } catch (e: Exception) {
+            Log.w(TAG, "stopAdvertisingSet: ${e.message}")
+        }
+        setCallback = null
+        advSet = null
+        setStarting = false
+    }
+
     fun stopAll() = forceMode(0)
 
     @SuppressLint("MissingPermission")
@@ -245,8 +384,10 @@ class BleBroadcaster(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
+    @Synchronized
     fun shutdown() {
         stopInternal()
+        stopSet()
         currentMode = -1
     }
 }

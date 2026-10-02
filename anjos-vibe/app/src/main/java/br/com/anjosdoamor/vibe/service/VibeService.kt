@@ -44,12 +44,26 @@ class VibeService : Service() {
             )
         }
 
+        /**
+         * Tira o servico do ar quando a sessao ja acabou. Nao para o motor:
+         * quem chama ja parou. Parar de novo aqui chegava atrasado e
+         * derrubava um modo que o usuario tinha acabado de ligar.
+         */
         fun stop(context: Context) {
-            context.startService(
-                Intent(context, VibeService::class.java).setAction(ACTION_STOP)
-            )
+            try {
+                context.startService(
+                    Intent(context, VibeService::class.java).setAction(ACTION_DISMISS)
+                )
+            } catch (e: Exception) {
+                // App em segundo plano: o Android nao deixa, e nao precisa
+            }
         }
+
+        private const val ACTION_DISMISS = "br.com.anjosdoamor.vibe.DISMISS"
     }
+
+    /** O app pediu para encerrar: a sessao ja esta parada. */
+    private var encerradoPeloApp = false
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -61,8 +75,16 @@ class VibeService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
+            ACTION_DISMISS -> {
+                encerradoPeloApp = true
+                ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            // Botao "Parar" da notificacao
             ACTION_STOP -> {
                 VibeController.stop()
+                encerradoPeloApp = true
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
@@ -80,6 +102,7 @@ class VibeService : Service() {
      * abriu a aba Musica nao tem, e o app fechava ao ligar qualquer modo.
      */
     private fun entrarEmPrimeiroPlano() {
+        encerradoPeloApp = false
         var tipos = 0
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             tipos = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
@@ -99,7 +122,8 @@ class VibeService : Service() {
     }
 
     override fun onDestroy() {
-        VibeController.stop()
+        // So para o motor se o servico morreu sem o app pedir
+        if (!encerradoPeloApp) VibeController.stop()
         super.onDestroy()
     }
 

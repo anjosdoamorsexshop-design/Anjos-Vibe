@@ -129,6 +129,7 @@ class VibeService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // App fechado pelo usuario: para tudo por seguranca
+        br.com.anjosdoamor.vibe.remote.RemoteSession.end()
         VibeController.stop()
         stopSelf()
         super.onTaskRemoved(rootIntent)

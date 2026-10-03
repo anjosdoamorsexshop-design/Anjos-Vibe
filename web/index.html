@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#170A14">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Anjos Vibe</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <header class="topo">
+      <span class="marca">Anjos Vibe</span>
+      <span id="selo" class="selo" hidden></span>
+    </header>
+
+    <!-- Entrada -->
+    <section id="tela-idade" class="tela" hidden>
+      <h1>Controle à distância</h1>
+      <p>Você recebeu um convite para controlar um vibrador pela internet. Conteúdo para maiores de 18 anos.</p>
+      <button id="btn-idade" class="primario">Tenho 18 anos ou mais</button>
+    </section>
+
+    <section id="tela-nome" class="tela" hidden>
+      <h1>Como você quer aparecer?</h1>
+      <p>A outra pessoa vê este apelido antes de aceitar.</p>
+      <input id="campo-nome" type="text" maxlength="24" autocomplete="off" placeholder="Seu apelido">
+      <button id="btn-entrar" class="primario">Pedir para controlar</button>
+    </section>
+
+    <section id="tela-espera" class="tela" hidden>
+      <div class="pulso" aria-hidden="true"></div>
+      <h1>Aguardando aceitar</h1>
+      <p>O pedido apareceu no celular da outra pessoa. Assim que for aceito, os controles abrem aqui.</p>
+    </section>
+
+    <section id="tela-aviso" class="tela" hidden>
+      <h1 id="aviso-titulo"></h1>
+      <p id="aviso-texto"></p>
+    </section>
+
+    <!-- Controle -->
+    <section id="tela-controle" hidden>
+      <p id="agora" class="agora">Parado</p>
+
+      <nav class="abas" role="tablist">
+        <button class="aba ativa" data-aba="modos" role="tab">Modos</button>
+        <button class="aba" data-aba="desenhar" role="tab">Desenhar</button>
+        <button class="aba" data-aba="padroes" role="tab">Padrões</button>
+      </nav>
+
+      <div class="painel-area">
+        <div id="painel-modos" class="painel">
+          <div id="grade" class="grade"></div>
+        </div>
+
+        <div id="painel-desenhar" class="painel" hidden>
+          <div class="quadro">
+            <canvas id="tela-desenho"></canvas>
+            <span class="faixa f3">forte</span>
+            <span class="faixa f2">médio</span>
+            <span class="faixa f1">fraco</span>
+          </div>
+          <p class="dica">Deslize o dedo. Mais alto, mais forte. Soltou, para.</p>
+        </div>
+
+        <div id="painel-padroes" class="painel" hidden>
+          <div id="lista-padroes" class="lista"></div>
+        </div>
+
+        <div id="bloqueio" class="bloqueio" hidden>
+          <p id="bloqueio-texto"></p>
+        </div>
+      </div>
+
+      <button id="btn-parar" class="parar">Parar</button>
+    </section>
+
+    <footer class="rodape">
+      <a href="https://anjosdoamorshop.com.br/" target="_blank" rel="noopener">Conheça a Anjos do Amor</a>
+    </footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

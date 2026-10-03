@@ -13,6 +13,9 @@
         android:name="android.permission.BLUETOOTH_ADMIN"
         android:maxSdkVersion="30" />
 
+    <!-- Longa distancia: comandos do parceiro chegam pela internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Modo musica -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 

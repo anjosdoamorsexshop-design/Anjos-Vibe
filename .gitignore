@@ -1,3 +1,7 @@
-﻿node_modules/
+node_modules/
 .firebase/
 *.log
+
+# Configuracao do Firebase: fica so no PC e num secret do GitHub Actions
+google-services.json
+web/firebase-config.js

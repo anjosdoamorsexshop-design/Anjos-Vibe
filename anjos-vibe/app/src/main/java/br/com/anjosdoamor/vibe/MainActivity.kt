@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.*
@@ -20,8 +21,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import br.com.anjosdoamor.vibe.remote.RemoteSession
 import br.com.anjosdoamor.vibe.service.VibeService
 import br.com.anjosdoamor.vibe.ui.*
 
@@ -55,6 +58,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         // Nunca deixar o aparelho ligado depois que o app morre
+        // Saiu do app de vez: o link de longa distancia deixa de valer
+        if (isFinishing) RemoteSession.end()
         VibeController.shutdown()
         VibeService.stop(this)
         super.onDestroy()
@@ -93,8 +98,11 @@ fun AppRoot(micPermission: Boolean, onRequestMic: () -> Unit) {
 
     // Mantem o servico vivo enquanto houver sessao ativa
     // (a troca de modo refaz o pedido: a musica precisa do tipo microfone)
-    LaunchedEffect(state.running, state.mode) {
-        if (state.running) VibeService.start(context) else VibeService.stop(context)
+    // Com sessao de longa distancia aberta o servico fica de pe mesmo com o
+    // motor parado: sem ele o Android suspende o app e os comandos nao chegam.
+    val remoto by RemoteSession.state.collectAsStateWithLifecycle()
+    LaunchedEffect(state.running, state.mode, remoto.active) {
+        if (state.running || remoto.active) VibeService.start(context) else VibeService.stop(context)
     }
 
     val abas = listOf(
@@ -102,6 +110,7 @@ fun AppRoot(micPermission: Boolean, onRequestMic: () -> Unit) {
         Aba("Padroes", Icons.Default.GraphicEq),
         Aba("Desenhar", Icons.Default.Brush),
         Aba("Musica", Icons.Default.MusicNote),
+        Aba("Distancia", Icons.Default.Public),
         Aba("Ajustes", Icons.Default.Settings)
     )
 
@@ -114,7 +123,7 @@ fun AppRoot(micPermission: Boolean, onRequestMic: () -> Unit) {
                         selected = aba == i,
                         onClick = { aba = i },
                         icon = { Icon(item.icon, contentDescription = item.label) },
-                        label = { Text(item.label, maxLines = 1) },
+                        label = { Text(item.label, maxLines = 1, fontSize = 10.sp) },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = Brand.Rosa,
                             selectedTextColor = Brand.Rosa,
@@ -138,6 +147,7 @@ fun AppRoot(micPermission: Boolean, onRequestMic: () -> Unit) {
                 1 -> PadroesScreen(state)
                 2 -> DesenharScreen()
                 3 -> MusicaScreen(state, onRequestMic, micPermission)
+                4 -> LongaDistanciaScreen()
                 else -> AjustesScreen()
             }
         }

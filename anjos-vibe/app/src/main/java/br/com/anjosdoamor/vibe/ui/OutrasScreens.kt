@@ -3,7 +3,8 @@ package br.com.anjosdoamor.vibe.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -14,15 +15,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.os.SystemClock
+import br.com.anjosdoamor.vibe.Mode
 import br.com.anjosdoamor.vibe.VibeController
 import br.com.anjosdoamor.vibe.VibeState
 import br.com.anjosdoamor.vibe.data.PatternStore
@@ -134,13 +139,95 @@ private fun PatternPreview(pattern: Pattern, modifier: Modifier = Modifier) {
 
 // --------------------------------------------------------------- Desenhar
 
+/** Um ponto do rastro na tela. [traco] separa um toque do outro. */
+private class Rastro(val x: Float, val y: Float, val em: Long, val traco: Int)
+
+private const val RASTRO_MS = 320L
+private const val GRAVACAO_MAX_MS = 30_000L
+private const val AMOSTRA_MS = 40L
+
+/** Faixa da tela (0 = baixo) para o degrau do aparelho: 1 fraco, 2 medio, 3 forte. */
+private fun nivelDaAltura(alturaRelativa: Float): Int = when {
+    alturaRelativa < 1f / 3f -> 1
+    alturaRelativa < 2f / 3f -> 2
+    else -> 3
+}
+
+/**
+ * Desenho ao vivo: o vibrador acompanha o dedo enquanto ele esta na tela,
+ * como no Love Spouse. Altura = forca, em tres faixas (os tres degraus
+ * continuos do aparelho). O rastro e uma lamina que afina e some, no
+ * estilo Fruit Ninja.
+ *
+ * Tudo o que e feito fica gravado com o tempo real -- inclusive as pausas
+ * com o dedo fora da tela -- e pode ser testado de novo ou salvo como
+ * padrao.
+ */
 @Composable
 fun DesenharScreen() {
     val context = LocalContext.current
-    var points by remember { mutableStateOf(listOf<Point>()) }
+
+    val rastro = remember { mutableStateListOf<Rastro>() }
+    var agora by remember { mutableLongStateOf(SystemClock.uptimeMillis()) }
+    var nivelAtual by remember { mutableIntStateOf(0) }
+    var traco by remember { mutableIntStateOf(0) }
+
+    // Gravacao: (ms desde o primeiro toque, intensidade)
+    val gravacao = remember { mutableStateListOf<Pair<Long, Float>>() }
+    var inicioGravacao by remember { mutableStateOf<Long?>(null) }
+    var ultimaAmostra by remember { mutableLongStateOf(0L) }
+
     var name by remember { mutableStateOf("") }
-    var duration by remember { mutableFloatStateOf(6f) }
     var saved by remember { mutableStateOf(false) }
+
+    // Anima o rastro sumindo mesmo com o dedo parado
+    LaunchedEffect(Unit) {
+        while (true) {
+            withFrameNanos { }
+            agora = SystemClock.uptimeMillis()
+            if (rastro.isNotEmpty()) rastro.removeAll { agora - it.em > RASTRO_MS }
+        }
+    }
+
+    // Saiu da aba com o dedo ainda valendo: para tudo
+    DisposableEffect(Unit) {
+        onDispose {
+            val s = VibeController.state.value
+            if (s.running && s.mode == Mode.MANUAL) VibeController.stop()
+        }
+    }
+
+    fun gravar(intensidade: Float, inicioDeTraco: Boolean) {
+        val t0 = inicioGravacao ?: SystemClock.uptimeMillis().also { inicioGravacao = it }
+        val t = SystemClock.uptimeMillis() - t0
+        if (t > GRAVACAO_MAX_MS) return
+        if (inicioDeTraco && t > 0) {
+            // Sem isso a curva subiria aos poucos durante a pausa
+            gravacao.add((t - 1).coerceAtLeast(0L) to 0f)
+        }
+        if (inicioDeTraco || intensidade == 0f || t - ultimaAmostra >= AMOSTRA_MS) {
+            gravacao.add(t to intensidade)
+            ultimaAmostra = t
+        }
+    }
+
+    fun tocar(x: Float, y: Float, altura: Float, inicioDeTraco: Boolean) {
+        val relativa = (1f - y / altura).coerceIn(0f, 1f)
+        val nivel = nivelDaAltura(relativa)
+        val intensidade = VibeController.intensidadeDoNivel(nivel)
+        nivelAtual = nivel
+        rastro.add(Rastro(x, y, SystemClock.uptimeMillis(), traco))
+        VibeController.setLiveIntensity(intensidade)
+        gravar(intensidade, inicioDeTraco)
+        saved = false
+    }
+
+    fun soltar() {
+        nivelAtual = 0
+        traco++
+        VibeController.setLiveIntensity(0f)
+        gravar(0f, inicioDeTraco = false)
+    }
 
     Column(
         modifier = Modifier
@@ -150,104 +237,146 @@ fun DesenharScreen() {
         Spacer(Modifier.height(8.dp))
 
         Text(
-            "Arraste o dedo da esquerda para a direita para desenhar a intensidade ao longo do tempo.",
+            "Deslize o dedo: o vibrador acompanha na hora. Mais alto, mais forte.",
             color = Brand.TextoFraco,
             fontSize = 13.sp
         )
 
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(12.dp))
 
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(220.dp)
+                .weight(1f)
                 .clip(RoundedCornerShape(18.dp))
                 .background(Brand.Superficie)
                 .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            points = listOf(
-                                Point(
-                                    (offset.x / size.width).coerceIn(0f, 1f),
-                                    (1f - offset.y / size.height).coerceIn(0f, 1f)
-                                )
-                            )
-                            saved = false
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        down.consume()
+                        val h = size.height.toFloat()
+                        tocar(down.position.x, down.position.y, h, inicioDeTraco = true)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val c = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!c.pressed) break
+                            c.consume()
+                            tocar(c.position.x, c.position.y, h, inicioDeTraco = false)
                         }
-                    ) { change, _ ->
-                        change.consume()
-                        val t = (change.position.x / size.width).coerceIn(0f, 1f)
-                        val v = (1f - change.position.y / size.height).coerceIn(0f, 1f)
-                        // So adiciona se avancou no tempo
-                        if (points.isEmpty() || t > points.last().t) {
-                            points = points + Point(t, v)
-                        }
+                        soltar()
                     }
                 }
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // Linhas de referencia nos 3 niveis do aparelho
-                listOf(1f / 3f, 2f / 3f, 1f).forEach { level ->
-                    val y = size.height * (1f - level)
-                    drawLine(
-                        color = Brand.TextoFraco.copy(alpha = 0.15f),
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = 1f
-                    )
+                val faixa = size.height / 3f
+
+                // Faixas dos 3 degraus; a do dedo acende
+                for (n in 1..3) {
+                    val topo = size.height - n * faixa
+                    if (n == nivelAtual) {
+                        drawRect(
+                            color = Brand.Magenta.copy(alpha = 0.10f + 0.05f * n),
+                            topLeft = Offset(0f, topo),
+                            size = Size(size.width, faixa)
+                        )
+                    }
+                    if (n < 3) {
+                        drawLine(
+                            color = Brand.TextoFraco.copy(alpha = 0.15f),
+                            start = Offset(0f, topo),
+                            end = Offset(size.width, topo),
+                            strokeWidth = 1f
+                        )
+                    }
                 }
 
-                if (points.size > 1) {
-                    val path = Path()
-                    points.forEachIndexed { i, p ->
-                        val x = p.t * size.width
-                        val y = size.height - p.v * size.height
-                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                    }
-                    drawPath(
-                        path = path,
-                        brush = Brush.horizontalGradient(
-                            listOf(Brand.Roxo, Brand.Magenta, Brand.Rosa)
-                        ),
-                        style = Stroke(width = 6f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                // Lamina: grossa e brilhante na ponta, fina e apagada na cauda
+                for (i in 1 until rastro.size) {
+                    val a = rastro[i - 1]
+                    val b = rastro[i]
+                    if (a.traco != b.traco) continue
+                    val vida = (1f - (agora - b.em).toFloat() / RASTRO_MS).coerceIn(0f, 1f)
+                    if (vida <= 0f) continue
+                    val grossura = 4f + 26f * vida
+                    val p1 = Offset(a.x, a.y)
+                    val p2 = Offset(b.x, b.y)
+                    drawLine(
+                        color = Brand.Magenta.copy(alpha = 0.30f * vida),
+                        start = p1, end = p2,
+                        strokeWidth = grossura * 2.2f,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Brand.Rosa.copy(alpha = 0.85f * vida),
+                        start = p1, end = p2,
+                        strokeWidth = grossura,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color.White.copy(alpha = 0.9f * vida),
+                        start = p1, end = p2,
+                        strokeWidth = grossura * 0.35f,
+                        cap = StrokeCap.Round
                     )
                 }
             }
 
-            if (points.isEmpty()) {
-                Text(
-                    "desenhe aqui",
-                    color = Brand.TextoFraco.copy(alpha = 0.4f),
-                    modifier = Modifier.align(Alignment.Center)
-                )
+            // Rotulos das faixas
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(start = 12.dp)
+            ) {
+                listOf(3 to "forte", 2 to "medio", 1 to "fraco").forEach { (n, rotulo) ->
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        Text(
+                            rotulo,
+                            color = if (n == nivelAtual) Brand.Rosa
+                            else Brand.TextoFraco.copy(alpha = 0.45f),
+                            fontSize = 12.sp,
+                            fontWeight = if (n == nivelAtual) FontWeight.Bold else FontWeight.Normal
+                        )
+                    }
+                }
             }
         }
 
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(12.dp))
 
-        Text("Duracao do ciclo: ${duration.toInt()}s", color = Brand.Texto, fontSize = 14.sp)
-        Slider(
-            value = duration,
-            onValueChange = { duration = it },
-            valueRange = 2f..30f
+        val gravadoMs = gravacao.lastOrNull()?.first ?: 0L
+        Text(
+            if (gravacao.isEmpty()) "Gravacao: comeca no primeiro toque (ate 30 s)"
+            else "Gravado: ${gravadoMs / 1000}s" +
+                if (gravadoMs >= GRAVACAO_MAX_MS) " (limite)" else "",
+            color = Brand.TextoFraco,
+            fontSize = 12.sp
         )
 
         Spacer(Modifier.height(8.dp))
 
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text("Nome do padrao") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Spacer(Modifier.height(14.dp))
+        fun padraoGravado(id: String, nome: String): Pattern? {
+            if (gravacao.size < 2) return null
+            val dur = (gravacao.last().first + 200L).coerceAtLeast(1000L)
+            return Pattern(
+                id = id,
+                name = nome,
+                durationMs = dur.toInt(),
+                points = gravacao.map { (t, v) -> Point(t.toFloat() / dur, v) }
+            )
+        }
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(
                 onClick = {
-                    points = emptyList()
+                    VibeController.stop()
+                    gravacao.clear()
+                    inicioGravacao = null
+                    ultimaAmostra = 0L
                     saved = false
                 },
                 modifier = Modifier.weight(1f)
@@ -255,49 +384,41 @@ fun DesenharScreen() {
 
             Button(
                 onClick = {
-                    if (points.size > 1) {
-                        VibeController.playPattern(
-                            Pattern(
-                                id = "preview",
-                                name = "Previa",
-                                durationMs = (duration * 1000).toInt(),
-                                points = points
-                            )
-                        )
-                    }
+                    padraoGravado("preview", "Previa")?.let { VibeController.playPattern(it) }
                 },
                 modifier = Modifier.weight(1f),
-                enabled = points.size > 1
-            ) { Text("Testar") }
+                enabled = gravacao.size > 1
+            ) { Text("Repetir") }
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
 
-        Button(
-            onClick = {
-                if (points.size > 1 && name.isNotBlank()) {
-                    PatternStore.save(
-                        context,
-                        Pattern(
-                            id = PatternStore.newId(),
-                            name = name.trim(),
-                            durationMs = (duration * 1000).toInt(),
-                            points = points
-                        )
-                    )
-                    saved = true
-                    name = ""
-                    points = emptyList()
-                }
-            },
-            enabled = points.size > 1 && name.isNotBlank(),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(52.dp),
-            shape = RoundedCornerShape(16.dp)
-        ) { Text(if (saved) "Salvo" else "Salvar padrao") }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it },
+                label = { Text("Nome do padrao") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            Button(
+                onClick = {
+                    padraoGravado(PatternStore.newId(), name.trim())?.let {
+                        PatternStore.save(context, it)
+                        saved = true
+                        name = ""
+                    }
+                },
+                enabled = gravacao.size > 1 && name.isNotBlank(),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.height(56.dp)
+            ) { Text(if (saved) "Salvo" else "Salvar") }
+        }
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(16.dp))
     }
 }
 

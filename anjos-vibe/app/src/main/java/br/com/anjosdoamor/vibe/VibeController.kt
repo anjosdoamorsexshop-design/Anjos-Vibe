@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlin.math.pow
 
 enum class Mode { MANUAL, PADRAO, MUSICA, DIRETO }
 
@@ -105,6 +106,33 @@ object VibeController {
             _state.value = _state.value.copy(intensity = manualIntensity)
             if (manualIntensity > 0f && !_state.value.running) start()
         }
+    }
+
+    /**
+     * Intensidade ao vivo, dedo na tela (aba Desenhar). Sai de padrao ou
+     * musica, se estiver em um. Zero manda parar o motor, mas mantem a
+     * sessao aberta para o proximo toque responder na hora.
+     */
+    fun setLiveIntensity(value: Float) {
+        if (_state.value.mode != Mode.MANUAL) {
+            activePattern = null
+            beat.stop()
+            _state.value = _state.value.copy(mode = Mode.MANUAL, patternId = null)
+        }
+        manualIntensity = value.coerceIn(0f, 1f)
+        _state.value = _state.value.copy(intensity = manualIntensity)
+        if (manualIntensity > 0f && !_state.value.running) start()
+    }
+
+    /**
+     * Intensidade que cai no meio do degrau [nivel] (1 fraco, 2 medio,
+     * 3 forte) depois da curva de forca do driver. Assim cada faixa da tela
+     * corresponde exatamente a um degrau do aparelho.
+     */
+    fun intensidadeDoNivel(nivel: Int): Float {
+        val alvo = when (nivel) { 1 -> 0.18f; 2 -> 0.46f; 3 -> 1f; else -> 0f }
+        val gain = (driver?.gain ?: 1.6f).coerceIn(0.5f, 3f)
+        return alvo.pow(gain)
     }
 
     /**

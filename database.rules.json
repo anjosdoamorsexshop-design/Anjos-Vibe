@@ -1,0 +1,75 @@
+{
+  "rules": {
+    "sessionKeys": {
+      "$code": {
+        ".read": false,
+        ".write": "auth != null && root.child('sessions').child($code).child('owner').val() === auth.uid",
+        ".validate": "newData.isString() && newData.val().length === 32"
+      }
+    },
+    "sessions": {
+      "$code": {
+        ".read": "auth != null && data.child('owner').val() === auth.uid",
+        ".write": "auth != null && (data.child('owner').val() === auth.uid || (!data.exists() && newData.child('owner').val() === auth.uid))",
+        "owner": {
+          ".validate": "newData.isString()"
+        },
+        "createdAt": {
+          ".validate": "newData.isNumber() && (data.exists() ? newData.val() === data.val() : newData.val() === now)"
+        },
+        "requests": {
+          "$uid": {
+            ".read": "auth != null && auth.uid === $uid",
+            ".write": "auth != null && auth.uid === $uid && newData.exists() && newData.child('key').val() === root.child('sessionKeys').child($code).val() && root.child('sessions').child($code).child('createdAt').val() > now - 86400000",
+            "name": {
+              ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 24"
+            },
+            "key": {
+              ".validate": "newData.isString() && newData.val().length === 32"
+            },
+            "status": {
+              ".validate": "newData.isString() && (root.child('sessions').child($code).child('owner').val() === auth.uid || newData.val() === data.val())"
+            },
+            "$other": {
+              ".validate": false
+            }
+          }
+        },
+        "partner": {
+          ".read": "auth != null && data.child('uid').val() === auth.uid",
+          "uid": { ".validate": "newData.isString()" },
+          "name": { ".validate": "newData.isString() && newData.val().length <= 24" },
+          "$other": { ".validate": false }
+        },
+        "state": {
+          ".read": "auth != null && root.child('sessions').child($code).child('partner').child('uid').val() === auth.uid",
+          "paused": { ".validate": "newData.isBoolean()" },
+          "online": { ".validate": "newData.isBoolean()" },
+          "now": { ".validate": "newData.isString() && newData.val().length <= 40" },
+          "$other": { ".validate": false }
+        },
+        "patterns": {
+          ".read": "auth != null && root.child('sessions').child($code).child('partner').child('uid').val() === auth.uid",
+          "$id": {
+            "name": { ".validate": "newData.isString() && newData.val().length <= 40" },
+            "$other": { ".validate": false }
+          }
+        },
+        "cmd": {
+          ".write": "auth != null && root.child('sessions').child($code).child('partner').child('uid').val() === auth.uid && root.child('sessions').child($code).child('state').child('paused').val() !== true && root.child('sessions').child($code).child('createdAt').val() > now - 86400000",
+          ".validate": "newData.hasChildren(['seq', 't'])",
+          "seq": { ".validate": "newData.isNumber()" },
+          "t": { ".validate": "newData.isString() && newData.val().matches(/^(mode|level|pattern|stop)$/)" },
+          "v": {
+            ".validate": "(newData.parent().child('t').val() === 'mode' && newData.isNumber() && newData.val() >= 1 && newData.val() <= 9) || (newData.parent().child('t').val() === 'level' && newData.isNumber() && newData.val() >= 0 && newData.val() <= 3) || (newData.parent().child('t').val() === 'pattern' && newData.isString() && newData.val().length >= 1 && newData.val().length <= 64)"
+          },
+          "$other": { ".validate": false }
+        },
+        "beat": {
+          ".write": "auth != null && root.child('sessions').child($code).child('partner').child('uid').val() === auth.uid",
+          ".validate": "newData.val() === now"
+        }
+      }
+    }
+  }
+}

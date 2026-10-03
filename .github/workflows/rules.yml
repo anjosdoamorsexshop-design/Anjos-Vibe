@@ -1,0 +1,34 @@
+name: Testar regras do banco
+
+on:
+  push:
+    paths:
+      - 'database.rules.json'
+      - 'firebase.json'
+      - 'web-tests/**'
+      - '.github/workflows/rules.yml'
+  workflow_dispatch:
+
+jobs:
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # O emulador do Realtime Database roda em Java
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar dependencias
+        working-directory: web-tests
+        run: npm install --no-audit --no-fund
+
+      - name: Rodar os testes no emulador
+        working-directory: web-tests
+        run: npx firebase emulators:exec --only database --project demo-anjos --config ../firebase.json "node --test"

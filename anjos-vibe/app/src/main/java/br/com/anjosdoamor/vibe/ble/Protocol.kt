@@ -17,12 +17,18 @@ import android.os.ParcelUuid
  *   Prefixo       6DB643CE97FE427C
  *
  *   Parar         E5157D
- *   9 modos       E0B82A E1313B E2AA09 E32318 E49C6C
- *                 E68E4F E7075E ECD4E0 ED5DF1
  *
- * O aparelho NAO tem 3 velocidades -- tem 9 modos de fabrica. A versao
- * anterior do app usava so 4 bytes, dois deles fracos, e por isso tudo
- * saia fraco. Agora os 9 estao disponiveis.
+ * ORDEM REMAPEADA em 02/10/2026, comparando no aparelho cada botao do
+ * Love Spouse com cada comando do nosso app (ja em rajada de 1 s). A ordem
+ * de agosto estava trocada: os 3 continuos eram E49C6C, E7075E e E68E4F,
+ * nao os tres primeiros da lista. A sequencia 7-8-9 bate com a captura
+ * HCI do Love Spouse (E2AA09, ED5DF1, ECD4E0, nessa ordem).
+ *
+ *   1 E49C6C  continuo fraco        6 E32318  pulsa x3, depois rapido
+ *   2 E7075E  continuo medio        7 E2AA09  pulsa x3, depois rapido
+ *   3 E68E4F  continuo forte        8 ED5DF1  pulsa pulsa rapido
+ *   4 E1313B  pulsa, pulsa, direto  9 ECD4E0  pulsa rapido + direto forte
+ *   5 E0B82A  pulsa pulsa pulsa
  *
  * Tudo aqui e editavel pela tela de Ajustes: se a fabrica trocar o firmware
  * de um lote, basta capturar o pacote novo e digitar, sem recompilar.
@@ -41,17 +47,17 @@ object Protocol {
     const val DEFAULT_PREFIX = "6DB643CE97FE427C"
     const val DEFAULT_STOP = "E5157D"
 
-    /** Os 9 modos, na ordem em que aparecem no app oficial. */
+    /** Os 9 modos, na mesma ordem dos botoes do Love Spouse. */
     val DEFAULT_MODOS = listOf(
-        "E0B82A", "E1313B", "E2AA09", "E32318", "E49C6C",
-        "E68E4F", "E7075E", "ECD4E0", "ED5DF1"
+        "E49C6C", "E7075E", "E68E4F", "E1313B", "E0B82A",
+        "E32318", "E2AA09", "ED5DF1", "ECD4E0"
     )
 
     /**
      * Quais modos os padroes, o desenho e a musica usam como
      * "fraco / medio / forte".
      *
-     * CONFIRMADO no aparelho em 29/08/2026: os modos 1, 2 e 3 sao as
+     * CONFIRMADO no aparelho em 02/10/2026: os modos 1, 2 e 3 sao as
      * velocidades constantes, em ordem crescente de forca. Do 4 ao 9 sao
      * padroes proprios de fabrica -- ja pulsam sozinhos, e usa-los como
      * degrau de intensidade estraga a curva dos padroes e do desenho.
@@ -85,13 +91,8 @@ object Protocol {
         return prefs(ctx).getString("modo_$i", DEFAULT_MODOS[i])!!
     }
 
-    /** Nome que o cliente deu ao modo, se deu. */
-    /** Nomes de fabrica dos modos ja identificados no aparelho. */
-    private val NOMES_PADRAO = mapOf(
-        1 to "Continuo fraco",
-        2 to "Continuo medio",
-        3 to "Continuo forte"
-    )
+    /** Nomes de fabrica. Vazio: os botoes mostram so o numero, como no Love Spouse. */
+    private val NOMES_PADRAO = emptyMap<Int, String>()
 
     fun modoNome(ctx: Context, modo: Int): String {
         val i = (modo - 1).coerceIn(0, TOTAL_MODOS - 1)

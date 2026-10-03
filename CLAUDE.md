@@ -12,12 +12,13 @@ Dona do projeto: **Mari** (Mariana), sócia da loja. Ela não programa: o Claude
 |---|---|
 | Repositório | https://github.com/anjosdoamorsexshop-design/Anjos-Vibe (público) |
 | Branch principal | `main` |
-| Último commit no `main` | `5f8e9ff` — "Update Protocol.kt" (30/08/2026) — escala 1-2-3 + nomes dos modos contínuos |
+| Último commit no `main` | ver `git log` — em 02/10/2026: rajada de 1 s + modos remapeados |
 | Clone local no PC (Windows) | `C:\Anjos Central\App Anjos Vibe` (pasta oficial de trabalho). Clone antigo em `C:\Users\anjos\OneDrive\Documentos\GitHub\Anjos-Vibe` (GitHub Desktop) — não usar mais |
 | Build | GitHub Actions, workflow **"Gerar APK"** (`.github/workflows/build.yml`), roda a cada push e manualmente |
-| **Último APK** | **Run #19** (commit `5f8e9ff`, sucesso) → https://github.com/anjosdoamorsexshop-design/Anjos-Vibe/actions/runs/33329281448 → artifact `anjos-vibe-apk` (contém `app-debug.apk`) |
+| **Último APK** | aba Actions → último run verde de "Gerar APK" → artifact `anjos-vibe-apk` (contém `app-debug.apk`) |
+| Instalar no celular | S25 Ultra da Mari com depuração USB: `adb install -r app-debug.apk` (adb via `winget install Google.PlatformTools`). Samsung: desligar "Bloqueador automático" para instalar por cabo |
 | Versão do app | `versionCode = 1`, `versionName = "1.0"` (nunca foi incrementada) |
-| Assinatura | **debug** — serve para teste, não para a Play Store |
+| Assinatura | **debug fixa** (`anjos-vibe/app/debug.keystore`, senha `android`) — todo APK de teste instala por cima do anterior. Não serve para a Play Store; a chave de release nunca entra no repo |
 
 **Atenção à estrutura de pastas:** o projeto Gradle NÃO está na raiz. Está em `anjos-vibe/` dentro do repo:
 
@@ -91,21 +92,27 @@ O aparelho só **escuta** pacotes de advertising — é broadcast de mão única
 | Parar | `E5157D` |
 | Payload = | prefixo + sufixo de 3 bytes |
 
-**9 modos** (a documentação pública fala em 3 — está errada para este estoque):
+**Como o Love Spouse transmite (captura HCI de 02/10/2026, S25 Ultra escutando um S21 FE):** cada toque é uma **rajada de ~0,9 s** — 6 a 8 pacotes legacy connectable (ADV_IND), um a cada ~135 ms, com **endereço novo por rajada** — e depois **silêncio**. O vibrador guarda o modo sozinho. Pacote: flags `01`, Manufacturer `FF00` + prefixo + sufixo, lista de UUID `8FAE`. O app agora faz igual: cada comando fica no ar `burst_ms` = **1000 ms** (Ajustes → "Comando no ar"; 0 = contínuo). **Transmitir sem parar faz os modos pulsarem** — não volte ao contínuo.
 
-| Modo | Sufixo | Tipo (confirmado no aparelho) |
+**9 modos — remapeados em 02/10/2026** (botão a botão, comparando a sensação no Love Spouse com a do nosso app; a ordem de agosto estava trocada):
+
+| Botão (= Love Spouse) | Sufixo | Sensação |
 |---|---|---|
-| 1 | `E0B82A` | Contínuo fraco |
-| 2 | `E1313B` | Contínuo médio |
-| 3 | `E2AA09` | Contínuo forte (o mais forte) |
-| 4 | `E32318` | Padrão de fábrica (pulsa) |
-| 5 | `E49C6C` | Padrão de fábrica |
-| 6 | `E68E4F` | Padrão de fábrica |
-| 7 | `E7075E` | Padrão de fábrica |
-| 8 | `ECD4E0` | Padrão de fábrica |
-| 9 | `ED5DF1` | Padrão de fábrica |
+| 1 | `E49C6C` | Contínuo fraco |
+| 2 | `E7075E` | Contínuo médio |
+| 3 | `E68E4F` | Contínuo forte |
+| 4 | `E1313B` | Pulsa, pulsa, direto (ciclo ~3 s) |
+| 5 | `E0B82A` | Pulsa pulsa pulsa |
+| 6 | `E32318` | Pulsa ×3, depois rápido (~8 s) |
+| 7 | `E2AA09` | Pulsa ×3, depois rápido |
+| 8 | `ED5DF1` | Pulsa pulsa rápido |
+| 9 | `ECD4E0` | Pulsa rápido + direto forte (~4 s) |
 
-**Escala de intensidade padrão = modos 1, 2, 3** (`DEFAULT_ESCALA = listOf(0, 1, 2)`, índices base zero). Padrões, desenho e música só devem usar os modos contínuos como degraus — usar modos 4–9 como degrau estraga as curvas, porque eles já pulsam sozinhos. Os modos 4–9 ainda não foram nomeados (cada um pode virar um nome comercial depois de testado).
+Botões 1–3 confirmados pela sensação. 4–9: casados pela sensação mais próxima e pela ordem 7-8-9 da captura HCI; se algum parecer trocado, é só reordenar `DEFAULT_MODOS`. Botões sem nome (só o número, como no Love Spouse).
+
+**Escala de intensidade padrão = botões 1, 2, 3** (`DEFAULT_ESCALA = listOf(0, 1, 2)`). Padrões, desenho e música só usam os contínuos como degraus.
+
+Valores salvos no aparelho (`anjos_vibe_protocol`: `modo_i`, `escala`, `refresh_ms`, `burst_ms`) não são sobrescritos por update — "Restaurar valores de fábrica" nos Ajustes limpa.
 
 ---
 
@@ -116,7 +123,15 @@ O aparelho só **escuta** pacotes de advertising — é broadcast de mão única
    - intervalo mínimo de **150 ms** entre reinícios (`minRestartGapMs`);
    - reenvio padrão **0 = transmissão contínua** (`refresh_ms` default 0). Valor já salvo no aparelho não é sobrescrito por update — se alguém mexeu no slider, precisa voltar para "Reenvio desligado".
    - Sinal objetivo de que está certo: scanner mostra **um** endereço estável.
-   Depois disso a força ficou igual à do Love Spouse no Samsung e no Xiaomi. **Não reintroduza reinícios periódicos.**
+   **Não reintroduza reinícios periódicos.** (Nota de 02/10/2026: a "força igual ao Love Spouse" registrada em agosto estava errada — o pulsar real vinha da ordem trocada dos modos e da transmissão contínua; ver Protocolo.)
+
+6. **App fechava ao apertar um modo em instalação nova** (02/10/2026): `startForeground` sem tipo herdava `microphone` do manifesto, que exige permissão de microfone já concedida. Agora declara `connectedDevice` sempre e `microphone` só com a permissão (`VibeService.entrarEmPrimeiroPlano`).
+
+7. **Troca de degrau religava a transmissão** (02/10/2026): no Android 8+ usa `AdvertisingSet.setAdvertisingData` para trocar o pacote sem religar.
+
+8. **Parada atrasada derrubava modo recém-ligado** (02/10/2026): o serviço chamava `VibeController.stop()` ao ser encerrado pelo próprio app. Agora o app usa `ACTION_DISMISS` (só tira o serviço) e o botão Parar da notificação usa `ACTION_STOP`.
+
+9. **Build quebrado pelo `setup-android`** (02/10/2026): a action tentava instalar o pacote `tools`, que deixou de existir. Workflow usa `packages: ''`.
 
 2. **Tradução automática do Chrome** já renomeou arquivos (`Protocol.kt` → `Protocolo.kt`, `Pattern.kt` → `Padrão.kt`) quando a Mari editou pelo site do GitHub, quebrando o build. Nomes de arquivo e pastas são sempre em inglês, sem acento.
 

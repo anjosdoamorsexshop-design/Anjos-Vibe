@@ -19,7 +19,7 @@ import kotlin.math.roundToInt
 class IntensityDriver(private val broadcaster: BleBroadcaster) {
 
     /** Modos usados como fraco / medio / forte. Vem dos Ajustes. */
-    var escala: List<Int> = listOf(1, 5, 7)
+    var escala: List<Int> = listOf(1, 2, 3)
 
     /** Alterna entre modos vizinhos para simular meio-termo. */
     var smoothMode: Boolean = false
@@ -39,7 +39,7 @@ class IntensityDriver(private val broadcaster: BleBroadcaster) {
             return
         }
 
-        val e = if (escala.size >= 3) escala else listOf(1, 5, 7)
+        val e = if (escala.size >= 3) escala else listOf(1, 2, 3)
         val v = raw.pow(1f / gain.coerceIn(0.5f, 3f)).coerceIn(0f, 1f)
 
         if (!smoothMode) {

@@ -213,6 +213,7 @@ object VibeController {
     }
 
     fun start() {
+        stopRepeat?.cancel()
         if (loop?.isActive == true) {
             _state.value = _state.value.copy(running = true)
             return
@@ -262,11 +263,26 @@ object VibeController {
         }
     }
 
+    /** Chamado quando a propria dona manda parar (botao, notificacao, timer). */
+    var onUserStop: (() -> Unit)? = null
+
+    private var stopRepeat: Job? = null
+
     /**
      * PARADA. Corta tudo imediatamente.
      * Chamada pelo botao de emergencia, pelo timer e ao fechar o app.
+     * Numa sessao de longa distancia, tambem pausa o controle do parceiro.
      */
     fun stop() {
+        stopSilently()
+        onUserStop?.invoke()
+    }
+
+    /**
+     * Para o motor sem avisar a sessao remota. Usado quando quem manda
+     * parar e o proprio parceiro, ou quando a conexao cai.
+     */
+    fun stopSilently() {
         loop?.cancel()
         loop = null
         beat.stop()
@@ -274,7 +290,8 @@ object VibeController {
         activePattern = null
         driver?.stop()
         // Reenvia a parada: o aparelho nao confirma recebimento
-        scope.launch {
+        stopRepeat?.cancel()
+        stopRepeat = scope.launch {
             repeat(3) {
                 delay(120)
                 broadcaster?.forceMode(0)
@@ -288,6 +305,39 @@ object VibeController {
             patternId = null,
             timerEndsAt = null
         )
+    }
+
+    /**
+     * Aplica um comando do parceiro, ja validado. Devolve o texto do que
+     * passou a tocar, para mostrar nos dois lados.
+     */
+    fun applyRemote(cmd: br.com.anjosdoamor.vibe.remote.RemoteCommand): String = when (cmd) {
+        is br.com.anjosdoamor.vibe.remote.RemoteCommand.Mode -> {
+            setMode(cmd.mode)
+            "Modo ${cmd.mode}"
+        }
+        is br.com.anjosdoamor.vibe.remote.RemoteCommand.Level -> {
+            setLiveIntensity(intensidadeDoNivel(cmd.level))
+            when (cmd.level) {
+                1 -> "Desenho: fraco"
+                2 -> "Desenho: medio"
+                3 -> "Desenho: forte"
+                else -> "Desenho"
+            }
+        }
+        is br.com.anjosdoamor.vibe.remote.RemoteCommand.PlayPattern -> {
+            val p = patterns().firstOrNull { it.id == cmd.id }
+            if (p != null) {
+                playPattern(p)
+                p.name
+            } else {
+                _state.value.let { if (it.running) "" else "Parado" }
+            }
+        }
+        br.com.anjosdoamor.vibe.remote.RemoteCommand.Stop -> {
+            stopSilently()
+            "Parado"
+        }
     }
 
     fun shutdown() {

@@ -32,6 +32,10 @@ jobs:
           echo "dir=$DIR" >> $GITHUB_OUTPUT
           echo "Projeto em: $DIR"
 
+      - name: Rodar os testes
+        working-directory: ${{ steps.find.outputs.dir }}
+        run: gradle testDebugUnitTest --no-daemon
+
       - name: Compilar o APK
         working-directory: ${{ steps.find.outputs.dir }}
         run: gradle assembleDebug --no-daemon

@@ -49,7 +49,7 @@ O artifact do Actions expira (padrão do GitHub ~90 dias). Se precisar de APK no
 - `compileSdk 34`, `targetSdk 34`, `minSdk 24`
 - `applicationId` / namespace: `br.com.anjosdoamor.vibe`
 - kotlinx-serialization-json 1.6.3, coroutines 1.8.1, lifecycle 2.8.3
-- Sem servidor, sem conta, sem internet — tudo local (v1)
+- Sem conta. Tudo local, exceto a aba Longa distância, que usa Firebase (BoM 33.1.2 — última linha compatível com Kotlin 1.9.24)
 
 ## Estrutura do código (`app/src/main/java/br/com/anjosdoamor/vibe/`)
 
@@ -63,7 +63,7 @@ O artifact do Actions expira (padrão do GitHub ~90 dias). Se precisar de APK no
 | `data/PatternStore.kt` | Padrões salvos pelo usuário (SharedPreferences, JSON) |
 | `service/VibeService.kt` | Foreground service — mantém transmitindo com a tela apagada; notificação com botão "Parar" |
 | `VibeController.kt` | Singleton central: estado (`StateFlow<VibeState>`), loop de tick (80 ms), timer, parada de emergência |
-| `MainActivity.kt` | Navegação em 5 abas + pedidos de permissão |
+| `MainActivity.kt` | Navegação em 6 abas + pedidos de permissão |
 | `ui/ControleScreen.kt` | Aba Controle (grade de 9 modos) |
 | `ui/OutrasScreens.kt` | Abas Padrões, Desenhar e Música |
 | `ui/AjustesScreen.kt` | Aba Ajustes: escala de intensidade, força da transmissão (reenvio), testar os 9 modos, editor dos bytes |
@@ -140,6 +140,28 @@ Valores salvos no aparelho (`anjos_vibe_protocol`: `modo_i`, `escala`, `refresh_
 4. **`build.gradle.kts` raiz × `app/`**: já houve troca de conteúdo entre os dois. A raiz tem só os plugins com `version ... apply false`; o do `app/` tem `android { ... }` e as dependências.
 
 5. **Strings sem acento** no código Kotlin (ex.: "Padroes", "Musica", "Continuo") — foi escolha para evitar problemas de encoding; pode-se migrar para `strings.xml` com acentos corretamente.
+
+## Longa distância (controle por link) — desde 03/10/2026
+
+Design: `docs/superpowers/specs/2026-10-03-longa-distancia-design.md`. Plano: `docs/superpowers/plans/2026-10-03-longa-distancia.md`.
+
+```
+Parceiro (página no navegador) → Firebase Realtime Database → app (dona) → Bluetooth → vibrador
+```
+
+| Peça | Onde |
+|---|---|
+| Projeto Firebase | `anjos-vibe` (conta Google da loja). Realtime Database `anjos-vibe-default-rtdb` (us-central1), Auth anônimo, Hosting |
+| Página do parceiro | `web/` (HTML/CSS/JS puros, sem build) → https://anjos-vibe.web.app |
+| Regras do banco | `database.rules.json` + 25 testes em `web-tests/` (workflow "Testar regras do banco", roda no emulador) |
+| App | `remote/RemoteSession.kt` (tudo que fala com o Firebase), `remote/RemoteCommand.kt` (validação + limite de 20 comandos/s, com testes JUnit), `ui/LongaDistanciaScreen.kt` (6ª aba, "Distancia") |
+
+- **Publicar** página ou regras: `npx firebase-tools deploy --only hosting` / `--only database` (login já feito no PC da Mari com `npx firebase-tools login`).
+- **Chaves fora do repositório** (pedido da Mari depois de um alerta do GitHub): `anjos-vibe/app/google-services.json` fica só no PC e no secret `GOOGLE_SERVICES_JSON` do GitHub Actions; a página lê a configuração de `/__/firebase/init.json`. Não commitar nenhum dos dois.
+- Regras de produto: dona aprova quem entra; um parceiro por link; link vale 24 h; **PARAR pausa o controle** até "Retomar"; sem sinal de vida do parceiro por 5 s o motor para; fechar o app encerra a sessão.
+- Ao apagar uma sessão, a chave (`sessionKeys/{code}`) sai **antes** da sessão — depois as regras não deixam mais.
+- Testado de ponta a ponta em 03/10/2026 (PC como parceiro + S25 no cabo, e pela Mari com um segundo celular).
+- **Próxima etapa:** chamada de vídeo dentro da página e do app (WebRTC direto, usando a mesma sessão para os dois se encontrarem). Ainda sem design.
 
 ## O que NÃO dá com este hardware
 - Web Bluetooth/site/extensão/PWA: não conseguem fazer advertising (só cliente GATT); Safari nem tem Web Bluetooth. WebView híbrido ainda exigiria Bluetooth e serviço nativos.

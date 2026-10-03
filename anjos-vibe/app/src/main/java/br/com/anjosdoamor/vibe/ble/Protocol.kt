@@ -155,6 +155,17 @@ object Protocol {
         prefs(ctx).edit().putLong("refresh_ms", ms.coerceIn(0L, 2000L)).apply()
     }
 
+    /** Duracao de cada comando no ar, em ms. 0 = transmissao continua. */
+    fun burstMs(ctx: Context): Long =
+        prefs(ctx).getLong("burst_ms", DEFAULT_BURST_MS)
+
+    fun setBurstMs(ctx: Context, ms: Long) {
+        prefs(ctx).edit().putLong("burst_ms", ms.coerceIn(0L, 5000L)).apply()
+    }
+
+    /** Igual ao app oficial: rajada de ~0,9 s por comando (captura de 02/10/2026). */
+    const val DEFAULT_BURST_MS = 1000L
+
     fun restoreDefaults(ctx: Context) {
         prefs(ctx).edit().clear().apply()
     }

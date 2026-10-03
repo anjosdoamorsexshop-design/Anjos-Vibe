@@ -42,6 +42,7 @@ fun AjustesScreen() {
     }
     var escala by remember { mutableStateOf(Protocol.escala(context)) }
     var refresh by remember { mutableFloatStateOf(Protocol.refreshMs(context).toFloat()) }
+    var burst by remember { mutableFloatStateOf(Protocol.burstMs(context).toFloat()) }
     var mensagem by remember { mutableStateOf<String?>(null) }
 
     val status = VibeController.bleStatus()
@@ -197,6 +198,30 @@ fun AjustesScreen() {
             fontSize = 11.sp
         )
 
+        Spacer(Modifier.height(20.dp))
+
+        Text(
+            if (burst <= 0f) "Comando no ar: sempre (continuo)"
+            else "Comando no ar: ${burst.toInt()} ms",
+            color = Brand.Texto,
+            fontSize = 14.sp
+        )
+        Slider(
+            value = burst,
+            onValueChange = { burst = (it / 100f).toInt() * 100f },
+            onValueChangeFinished = {
+                Protocol.setBurstMs(context, burst.toLong())
+                VibeController.reloadEscala()
+            },
+            valueRange = 0f..3000f
+        )
+        Text(
+            "O app oficial manda cada comando por cerca de 1 segundo e para. " +
+                "Padrao: 1000 ms. No zero, transmite sem parar (faz o modo pulsar).",
+            color = Brand.TextoFraco,
+            fontSize = 11.sp
+        )
+
         Spacer(Modifier.height(32.dp))
 
         // ---- Teste rapido dos 9 modos ------------------------------------
@@ -290,6 +315,7 @@ fun AjustesScreen() {
                 Protocol.DEFAULT_MODOS.forEachIndexed { i, v -> modos[i] = v }
                 escala = Protocol.DEFAULT_ESCALA.map { it + 1 }
                 refresh = 0f
+                burst = Protocol.DEFAULT_BURST_MS.toFloat()
                 VibeController.reloadEscala()
                 mensagem = "Valores de fabrica restaurados."
             },

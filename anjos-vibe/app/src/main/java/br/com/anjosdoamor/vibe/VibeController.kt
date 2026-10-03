@@ -62,6 +62,7 @@ object VibeController {
         appContext = context.applicationContext
         broadcaster = BleBroadcaster(appContext).also {
             it.refreshIntervalMs = br.com.anjosdoamor.vibe.ble.Protocol.refreshMs(appContext)
+            it.burstMs = br.com.anjosdoamor.vibe.ble.Protocol.burstMs(appContext)
             driver = IntensityDriver(it).apply {
                 escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
             }
@@ -85,6 +86,7 @@ object VibeController {
                 if (b.lastFailCode != 0) " (codigo ${b.lastFailCode})" else "",
             "Ja estava no ar: ${b.alreadyStartedCount}",
             "Reenvio salvo: ${if (refresh <= 0L) "desligado" else "$refresh ms"}",
+            "Comando no ar: ${p.burstMs(appContext).let { if (it <= 0L) "sempre" else "$it ms" }}",
             "Escala salva: ${p.escala(appContext).joinToString(", ")}",
             "Celular: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
                 "Android ${android.os.Build.VERSION.RELEASE}"
@@ -160,6 +162,8 @@ object VibeController {
         driver?.escala = br.com.anjosdoamor.vibe.ble.Protocol.escala(appContext)
         broadcaster?.refreshIntervalMs =
             br.com.anjosdoamor.vibe.ble.Protocol.refreshMs(appContext)
+        broadcaster?.burstMs =
+            br.com.anjosdoamor.vibe.ble.Protocol.burstMs(appContext)
     }
 
     fun setGain(value: Float) {

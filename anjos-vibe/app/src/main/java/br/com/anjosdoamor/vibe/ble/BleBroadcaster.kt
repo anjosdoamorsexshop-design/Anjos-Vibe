@@ -61,6 +61,36 @@ class BleBroadcaster(private val context: Context) {
     private var lastStartAt: Long = 0
 
     /**
+     * Quanto tempo cada comando fica no ar. 0 = transmissao continua.
+     *
+     * CAPTURADO em 02/10/2026 (log HCI do S25 Ultra escutando o Love
+     * Spouse num S21 FE): cada toque e uma rajada de ~0,9 s -- 6 a 8
+     * pacotes, um a cada ~135 ms -- e depois silencio. O vibrador guarda o
+     * modo sozinho. Transmitir sem parar era a unica diferenca em relacao
+     * ao app oficial, e com ela o modo pulsava em vez de vibrar direto.
+     */
+    var burstMs: Long = 1000L
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val endBurst = Runnable { encerrarRajada() }
+
+    /** Agenda o fim da transmissao, contando a partir do ultimo comando. */
+    private fun agendarFimDaRajada() {
+        handler.removeCallbacks(endBurst)
+        if (burstMs > 0L) handler.postDelayed(endBurst, burstMs)
+    }
+
+    /**
+     * Tira a transmissao do ar, mas mantem [currentMode]: o vibrador
+     * continua no ultimo modo, e o mesmo comando nao precisa ser reenviado.
+     */
+    @Synchronized
+    private fun encerrarRajada() {
+        stopInternal()
+        stopSet()
+    }
+
+    /**
      * Nunca reiniciar a transmissao mais rapido que isso.
      *
      * O stopAdvertising do Android e assincrono: parar e comecar no mesmo
@@ -242,6 +272,7 @@ class BleBroadcaster(private val context: Context) {
             currentMode = target
             lastStartAt = System.currentTimeMillis()
             startCount++
+            agendarFimDaRajada()
         } catch (e: Exception) {
             lastError = e.message
             currentMode = -1
@@ -272,6 +303,7 @@ class BleBroadcaster(private val context: Context) {
                 set.setAdvertisingData(data)
                 currentMode = target
                 dataChangeCount++
+                agendarFimDaRajada()
             } catch (e: Exception) {
                 lastError = e.message
                 stopSet()
@@ -350,6 +382,7 @@ class BleBroadcaster(private val context: Context) {
             currentMode = target
             lastStartAt = System.currentTimeMillis()
             startCount++
+            agendarFimDaRajada()
         } catch (e: Exception) {
             lastError = e.message
             currentMode = -1
@@ -386,6 +419,7 @@ class BleBroadcaster(private val context: Context) {
     @SuppressLint("MissingPermission")
     @Synchronized
     fun shutdown() {
+        handler.removeCallbacks(endBurst)
         stopInternal()
         stopSet()
         currentMode = -1
